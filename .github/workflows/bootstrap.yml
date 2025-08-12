@@ -16,6 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1) เขียนโปรเจ็กต์ (โครง + โค้ด + res) ลง repo ให้ครบ
       - name: Write project files
         run: |
           set -e
@@ -24,64 +25,59 @@ jobs:
           mkdir -p gradle/wrapper
 
           cat > settings.gradle.kts << 'EOF'
-          pluginManagement {
-              repositories { google(); mavenCentral(); gradlePluginPortal() }
-          }
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { google(); mavenCentral() }
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories { google(); mavenCentral() }
           }
-          rootProject.name = "Recover-Easy-Fast"
+          rootProject.name = "RecoverEasy"
           include(":app")
           EOF
 
           cat > build.gradle.kts << 'EOF'
           plugins {
-              id("com.android.application") version "8.5.2" apply false
-              kotlin("android") version "1.9.24" apply false
+            id("com.android.application") version "8.5.2" apply false
+            kotlin("android") version "1.9.24" apply false
           }
           EOF
 
           cat > app/build.gradle.kts << 'EOF'
           plugins {
-              id("com.android.application")
-              kotlin("android")
+            id("com.android.application")
+            kotlin("android")
           }
           android {
-              namespace = "com.recovereasy"
-              compileSdk = 34
-              defaultConfig {
-                  applicationId = "com.recovereasy"
-                  minSdk = 24
-                  targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
+            namespace = "com.recovereasy"
+            compileSdk = 34
+            defaultConfig {
+              applicationId = "com.recovereasy"
+              minSdk = 24
+              targetSdk = 34
+              versionCode = 1
+              versionName = "1.0"
+            }
+            buildTypes {
+              debug { isDebuggable = true }
+              release {
+                isMinifyEnabled = false
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
               }
-              buildTypes {
-                  debug {
-                      // ใช้คีย์ debug (ติดตั้งได้เลย)
-                      isDebuggable = true
-                  }
-                  release {
-                      isMinifyEnabled = false
-                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-                  }
-              }
-              buildFeatures { viewBinding = true }
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions { jvmTarget = "17" }
+            }
+            buildFeatures { viewBinding = true }
+            compileOptions {
+              sourceCompatibility = JavaVersion.VERSION_17
+              targetCompatibility = JavaVersion.VERSION_17
+            }
+            kotlinOptions { jvmTarget = "17" }
           }
           dependencies {
-              implementation("androidx.core:core-ktx:1.13.1")
-              implementation("androidx.appcompat:appcompat:1.7.0")
-              implementation("com.google.android.material:material:1.12.0")
-              implementation("androidx.recyclerview:recyclerview:1.3.2")
-              implementation("androidx.activity:activity-ktx:1.9.2")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-              implementation("io.coil-kt:coil:2.6.0")
+            implementation("androidx.core:core-ktx:1.13.1")
+            implementation("androidx.appcompat:appcompat:1.7.0")
+            implementation("com.google.android.material:material:1.12.0")
+            implementation("androidx.recyclerview:recyclerview:1.3.2")
+            implementation("androidx.activity:activity-ktx:1.9.2")
+            implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+            implementation("io.coil-kt:coil:2.6.0")
           }
           EOF
 
@@ -91,52 +87,52 @@ jobs:
 
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.recovereasy">
-              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-              <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-              <application
-                  android:allowBackup="true"
-                  android:label="@string/app_name"
-                  android:icon="@mipmap/ic_launcher"
-                  android:roundIcon="@mipmap/ic_launcher"
-                  android:theme="@style/Theme.RecoverEasy">
-                  <activity android:name=".MainActivity" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
+            <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+            <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+            <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+            <application
+              android:allowBackup="true"
+              android:label="@string/app_name"
+              android:icon="@mipmap/ic_launcher"
+              android:roundIcon="@mipmap/ic_launcher"
+              android:theme="@style/Theme.RecoverEasy">
+              <activity android:name=".MainActivity" android:exported="true">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN" />
+                  <category android:name="android.intent.category.LAUNCHER" />
+                </intent-filter>
+              </activity>
+            </application>
           </manifest>
           EOF
 
           cat > app/src/main/res/values/strings.xml << 'EOF'
           <resources>
-              <string name="app_name">RecoverEasy</string>
-              <string name="images">Images</string>
-              <string name="videos">Videos</string>
-              <string name="audios">Audio</string>
-              <string name="ready">Ready</string>
+            <string name="app_name">RecoverEasy</string>
+            <string name="images">Images</string>
+            <string name="videos">Videos</string>
+            <string name="audios">Audio</string>
+            <string name="ready">Ready</string>
           </resources>
           EOF
 
           cat > app/src/main/res/values/colors.xml << 'EOF'
           <resources>
-              <color name="primary">#6750A4</color>
-              <color name="onPrimary">#FFFFFF</color>
-              <color name="background">#FFFFFF</color>
-              <color name="onBackground">#000000</color>
-              <color name="ic_launcher_background">#2A2A2A</color>
+            <color name="primary">#6750A4</color>
+            <color name="onPrimary">#FFFFFF</color>
+            <color name="background">#FFFFFF</color>
+            <color name="onBackground">#000000</color>
+            <color name="ic_launcher_background">#2A2A2A</color>
           </resources>
           EOF
 
           cat > app/src/main/res/values/themes.xml << 'EOF'
           <resources xmlns:tools="http://schemas.android.com/tools">
-              <style name="Theme.RecoverEasy" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-                  <item name="colorPrimary">@color/primary</item>
-                  <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimary</item>
-              </style>
+            <style name="Theme.RecoverEasy" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+              <item name="colorPrimary">@color/primary</item>
+              <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimary</item>
+            </style>
           </resources>
           EOF
 
@@ -145,17 +141,17 @@ jobs:
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:app="http://schemas.android.com/apk/res-auto"
               android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
-              <com.google.android.material.appbar.MaterialToolbar
-                  android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content"
-                  app:title="@string/app_name" />
-              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                  android:orientation="horizontal" android:padding="8dp">
-                  <Button android:id="@+id/btnImages" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/images"/>
-                  <Button android:id="@+id/btnVideos" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/videos"/>
-                  <Button android:id="@+id/btnAudios" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/audios"/>
-              </LinearLayout>
-              <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp" android:text="@string/ready"/>
-              <androidx.recyclerview.widget.RecyclerView android:id="@+id/recycler" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content"
+                app:title="@string/app_name" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:padding="8dp">
+              <Button android:id="@+id/btnImages" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/images"/>
+              <Button android:id="@+id/btnVideos" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/videos"/>
+              <Button android:id="@+id/btnAudios" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/audios"/>
+            </LinearLayout>
+            <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp" android:text="@string/ready"/>
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/recycler" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
           </LinearLayout>
           EOF
 
@@ -164,33 +160,25 @@ jobs:
           <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
               android:orientation="horizontal" android:padding="8dp"
               android:layout_width="match_parent" android:layout_height="wrap_content">
-              <ImageView android:id="@+id/thumb" android:layout_width="64dp" android:layout_height="64dp" android:scaleType="centerCrop"/>
-              <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:paddingStart="12dp">
-                  <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textStyle="bold" android:textColor="@color/onBackground" android:text="Title"/>
-                  <TextView android:id="@+id/subtitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#666666" android:text="detail"/>
-              </LinearLayout>
+            <ImageView android:id="@+id/thumb" android:layout_width="64dp" android:layout_height="64dp" android:scaleType="centerCrop"/>
+            <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:paddingStart="12dp">
+              <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textStyle="bold" android:textColor="@color/onBackground" android:text="Title"/>
+              <TextView android:id="@+id/subtitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#666666" android:text="detail"/>
+            </LinearLayout>
           </LinearLayout>
           EOF
 
           cat > app/src/main/res/drawable/ic_audio.xml << 'EOF'
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-              <path android:fillColor="#FF000000" android:pathData="M12,3v10.55a4,4 0,1 1,-2 -3.45V6h4v9.5a6,6 0,1 1,-2 -4.5V3z"/>
-          </vector>
-          EOF
-
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'EOF'
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-              <path android:fillColor="#FFFFFF" android:pathData="M16,16h76v76h-76z"/>
-              <path android:fillColor="#6750A4" android:pathData="M32,54h44v8h-44zM32,70h36v8h-36z"/>
+            <path android:fillColor="#FF000000" android:pathData="M12,3v10.55a4,4 0,1 1,-2 -3.45V6h4v9.5a6,6 0,1 1,-2 -4.5V3z"/>
           </vector>
           EOF
 
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'EOF'
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@color/ic_launcher_background"/>
-              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+            <background android:drawable="@color/ic_launcher_background"/>
+            <foreground android:drawable="@drawable/ic_audio"/>
           </adaptive-icon>
           EOF
 
@@ -210,22 +198,22 @@ jobs:
           import androidx.recyclerview.widget.RecyclerView
           import coil.load
           class MediaAdapter(private var items: List<MediaItem>) : RecyclerView.Adapter<MediaAdapter.VH>() {
-              fun submit(list: List<MediaItem>) { items = list; notifyDataSetChanged() }
-              override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-                  VH(LayoutInflater.from(parent.context).inflate(R.layout.item_media, parent, false))
-              override fun getItemCount() = items.size
-              override fun onBindViewHolder(holder: VH, position: Int) {
-                  val item = items[position]
-                  holder.title.text = item.name
-                  holder.subtitle.text = item.mime ?: ""
-                  if (item.isAudio) holder.thumb.setImageResource(R.drawable.ic_audio)
-                  else holder.thumb.load(item.uri) { crossfade(true) }
-              }
-              class VH(v: View): RecyclerView.ViewHolder(v) {
-                  val thumb: ImageView = v.findViewById(R.id.thumb)
-                  val title: TextView = v.findViewById(R.id.title)
-                  val subtitle: TextView = v.findViewById(R.id.subtitle)
-              }
+            fun submit(list: List<MediaItem>) { items = list; notifyDataSetChanged() }
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+              VH(LayoutInflater.from(parent.context).inflate(R.layout.item_media, parent, false))
+            override fun getItemCount() = items.size
+            override fun onBindViewHolder(holder: VH, position: Int) {
+              val item = items[position]
+              holder.title.text = item.name
+              holder.subtitle.text = item.mime ?: ""
+              if (item.isAudio) holder.thumb.setImageResource(R.drawable.ic_audio)
+              else holder.thumb.load(item.uri) { crossfade(true) }
+            }
+            class VH(v: View): RecyclerView.ViewHolder(v) {
+              val thumb: ImageView = v.findViewById(R.id.thumb)
+              val title: TextView = v.findViewById(R.id.title)
+              val subtitle: TextView = v.findViewById(R.id.subtitle)
+            }
           }
           EOF
 
@@ -244,94 +232,99 @@ jobs:
           import androidx.recyclerview.widget.LinearLayoutManager
           import com.recovereasy.databinding.ActivityMainBinding
           class MainActivity : AppCompatActivity() {
-              private lateinit var binding: ActivityMainBinding
-              private val adapter = MediaAdapter(emptyList())
-              private val permissionLauncher = registerForActivityResult(
-                  ActivityResultContracts.RequestMultiplePermissions()
-              ) { loadImages() }
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  binding = ActivityMainBinding.inflate(layoutInflater)
-                  setContentView(binding.root)
-                  setSupportActionBar(binding.toolbar)
-                  binding.recycler.layoutManager = LinearLayoutManager(this)
-                  binding.recycler.adapter = adapter
-                  binding.btnImages.setOnClickListener { ensurePerms { loadImages() } }
-                  binding.btnVideos.setOnClickListener { ensurePerms { loadVideos() } }
-                  binding.btnAudios.setOnClickListener { ensurePerms { loadAudios() } }
-                  ensurePerms { loadImages() }
+            private lateinit var binding: ActivityMainBinding
+            private val adapter = MediaAdapter(emptyList())
+            private val permissionLauncher = registerForActivityResult(
+              ActivityResultContracts.RequestMultiplePermissions()
+            ) { loadImages() }
+            override fun onCreate(savedInstanceState: Bundle?) {
+              super.onCreate(savedInstanceState)
+              binding = ActivityMainBinding.inflate(layoutInflater)
+              setContentView(binding.root)
+              setSupportActionBar(binding.toolbar)
+              binding.recycler.layoutManager = LinearLayoutManager(this)
+              binding.recycler.adapter = adapter
+              binding.btnImages.setOnClickListener { ensurePerms { loadImages() } }
+              binding.btnVideos.setOnClickListener { ensurePerms { loadVideos() } }
+              binding.btnAudios.setOnClickListener { ensurePerms { loadAudios() } }
+              ensurePerms { loadImages() }
+            }
+            private fun ensurePerms(onOk: () -> Unit) {
+              val perms = if (Build.VERSION.SDK_INT >= 33)
+                arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
+              else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+              val need = perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+              if (need) permissionLauncher.launch(perms) else onOk()
+            }
+            private fun loadImages() {
+              adapter.submit(query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.MIME_TYPE),
+                false, MediaStore.Images.Media._ID))
+              binding.status.text = getString(R.string.images)
+            }
+            private fun loadVideos() {
+              adapter.submit(query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.MIME_TYPE),
+                false, MediaStore.Video.Media._ID))
+              binding.status.text = getString(R.string.videos)
+            }
+            private fun loadAudios() {
+              adapter.submit(query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME, MediaStore.Audio.Media.MIME_TYPE),
+                true, MediaStore.Audio.Media._ID))
+              binding.status.text = getString(R.string.audios)
+            }
+            private fun query(collection: Uri, projection: Array<String>, isAudio: Boolean, idColumn: String): List<MediaItem> {
+              val items = mutableListOf<MediaItem>()
+              contentResolver.query(collection, projection, null, null,
+                "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
+                val idIdx = c.getColumnIndexOrThrow(idColumn)
+                val nameIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val mimeIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+                while (c.moveToNext()) {
+                  val id = c.getLong(idIdx)
+                  val name = c.getString(nameIdx) ?: ""
+                  val mime = c.getString(mimeIdx)
+                  items.add(MediaItem(ContentUris.withAppendedId(collection, id), name, mime, isAudio))
+                }
               }
-              private fun ensurePerms(onOk: () -> Unit) {
-                  val perms = if (Build.VERSION.SDK_INT >= 33)
-                      arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
-                  else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-                  val need = perms.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-                  if (need) permissionLauncher.launch(perms) else onOk()
-              }
-              private fun loadImages() {
-                  adapter.submit(query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                      arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.MIME_TYPE),
-                      false, MediaStore.Images.Media._ID))
-                  binding.status.text = getString(R.string.images)
-              }
-              private fun loadVideos() {
-                  adapter.submit(query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                      arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.MIME_TYPE),
-                      false, MediaStore.Video.Media._ID))
-                  binding.status.text = getString(R.string.videos)
-              }
-              private fun loadAudios() {
-                  adapter.submit(query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                      arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME, MediaStore.Audio.Media.MIME_TYPE),
-                      true, MediaStore.Audio.Media._ID))
-                  binding.status.text = getString(R.string.audios)
-              }
-              private fun query(collection: Uri, projection: Array<String>, isAudio: Boolean, idColumn: String): List<MediaItem> {
-                  val items = mutableListOf<MediaItem>()
-                  contentResolver.query(collection, projection, null, null,
-                      "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { c ->
-                      val idIdx = c.getColumnIndexOrThrow(idColumn)
-                      val nameIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                      val mimeIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
-                      while (c.moveToNext()) {
-                          val id = c.getLong(idIdx)
-                          val name = c.getString(nameIdx) ?: ""
-                          val mime = c.getString(mimeIdx)
-                          items.add(MediaItem(ContentUris.withAppendedId(collection, id), name, mime, isAudio))
-                      }
-                  }
-                  return items
-              }
+              return items
+            }
           }
           EOF
 
-          # Gradle Wrapper (ดาวน์โหลดจากพาธที่ถูกต้อง)
-          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.9-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.9/gradlew -o gradlew
-          chmod +x gradlew
-          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.9/gradlew.bat -o gradlew.bat
-          curl -sL https://repo.gradle.org/gradle/libs-releases-local/org/gradle/gradle-wrapper/8.9/gradle-wrapper-8.9.jar -o gradle/wrapper/gradle-wrapper.jar
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Bootstrap Android project (auto)"
-          git push
-
+      # 2) ติดตั้ง JDK และ Android SDK ให้ครบ
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      
+      # 3) ดาวน์โหลด Gradle 8.9 แล้วให้มันสร้าง wrapper (กันปัญหา 404)
+      - name: Bootstrap Gradle Wrapper
+        run: |
+          set -e
+          curl -sL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o gradle-8.9-bin.zip
+          unzip -q gradle-8.9-bin.zip -d $HOME
+          $HOME/gradle-8.9/bin/gradle --version
+          $HOME/gradle-8.9/bin/gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
+
+      # 4) Build APK
       - name: Build Debug APK (installable)
-        run: ./gradlew clean :app:assembleDebug
+        run: ./gradlew clean :app:assembleDebug --stacktrace
+
+      # 5) อัปโหลดไฟล์เป็น artifact และสร้าง Release ให้โหลดได้
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Create GitHub Release and upload APK
         uses: ncipollo/release-action@v1
