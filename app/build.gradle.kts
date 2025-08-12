@@ -2,11 +2,9 @@ plugins {
     id("com.android.application")
     kotlin("android")
 }
-
 android {
     namespace = "com.recovereasy"
     compileSdk = 34
-
     defaultConfig {
         applicationId = "com.recovereasy"
         minSdk = 24
@@ -14,30 +12,23 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
-
     buildTypes {
+        debug {
+            // ใช้คีย์ debug (ติดตั้งได้เลย)
+            isDebuggable = true
+        }
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-
-    buildFeatures {
-        viewBinding = true
-    }
-
+    buildFeatures { viewBinding = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 }
-
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
