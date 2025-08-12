@@ -24,37 +24,49 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # ปิดการตรวจ Gradle Wrapper Validation (แก้ error "unknown Gradle Wrapper JAR")
+      # ติดตั้ง ANDROID SDK แบบสคริปต์เอง + กดยอมรับ license อัตโนมัติ
+      - name: Install Android SDK (manual, non-interactive)
+        shell: bash
+        run: |
+          set -e
+          export ANDROID_SDK_ROOT="${HOME}/android-sdk"
+          mkdir -p "${ANDROID_SDK_ROOT}"
+          # ดาวน์โหลด commandline-tools (เวอร์ชันใหม่ ไม่ติด validation)
+          curl -sLo cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip -d "${ANDROID_SDK_ROOT}/cmdline-tools"
+          mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+
+          # ยอมรับ licenses ทั้งหมดแบบ non-interactive
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses > /dev/null
+
+          # ติดตั้งแพ็กเกจที่ต้องใช้ทั่วไป (ปรับเพิ่มได้ตามโปรเจกต์)
+          sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "platforms;android-33" \
+            "build-tools;33.0.2"
+
+      # ปิด validation Gradle wrapper + cache Gradle
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: false
           gradle-home-cache-cleanup: true
 
-      # ติดตั้ง Android SDK + Build-tools ที่พบบ่อย (ปรับได้ตามโปรเจกต์)
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-34
-            build-tools;34.0.0
-            platforms;android-33
-            build-tools;33.0.2
-            platform-tools
-            cmdline-tools;latest
-
-      # บางทีไฟล์ gradlew ไม่ executable (บน repo สร้างจากมือถือ)
-      - name: Make gradlew executable (fix command not found)
+      # กันไว้ถ้า gradlew ไม่ executable ใน repo (อาการ command not found)
+      - name: Make gradlew executable
         run: |
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-          fi
+          if [ -f ./gradlew ]; then chmod +x ./gradlew; fi
 
-      # สั่ง build (ถ้าคุณอยาก release ใช้ assembleRelease แทน)
+      # Build APK (ถ้าอยากตัว release เปลี่ยนเป็น :app:assembleRelease)
       - name: Build Debug APK (installable)
         run: ./gradlew clean :app:assembleDebug
 
-      # เก็บไฟล์ APK ให้ดาวน์โหลดจากหน้า Actions
+      # อัปโหลด APK เป็น artifact ให้ดาวน์โหลดจากหน้า Actions
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
