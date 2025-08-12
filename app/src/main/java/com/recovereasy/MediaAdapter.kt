@@ -1,26 +1,57 @@
 package com.recovereasy
+
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import coil.ImageLoader
+import coil.decode.VideoFrameDecoder
 import coil.load
-class MediaAdapter(private var items: List<MediaItem>) : RecyclerView.Adapter<MediaAdapter.VH>() {
-    fun submit(list: List<MediaItem>) { items = list; notifyDataSetChanged() }
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        VH(LayoutInflater.from(parent.context).inflate(R.layout.item_media, parent, false))
-    override fun getItemCount() = items.size
-    override fun onBindViewHolder(holder: VH, position: Int) {
-        val item = items[position]
-        holder.title.text = item.name
-        holder.subtitle.text = item.mime ?: ""
-        if (item.isAudio) holder.thumb.setImageResource(R.drawable.ic_audio)
-        else holder.thumb.load(item.uri) { crossfade(true) }
+import com.recovereasy.databinding.ItemMediaBinding
+
+class MediaAdapter(
+  private val imageLoader: ImageLoader,
+  private val onToggle: (MediaItem) -> Unit,
+  private val isSelected: (MediaItem) -> Boolean
+) : ListAdapter<MediaItem, MediaAdapter.VH>(Diff) {
+
+  object Diff : DiffUtil.ItemCallback<MediaItem>() {
+    override fun areItemsTheSame(a: MediaItem, b: MediaItem) = a.uri == b.uri
+    override fun areContentsTheSame(a: MediaItem, b: MediaItem) = a == b
+  }
+
+  inner class VH(val b: ItemMediaBinding) : RecyclerView.ViewHolder(b.root)
+
+  override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+    val b = ItemMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+    return VH(b)
+  }
+
+  override fun onBindViewHolder(holder: VH, position: Int) {
+    val item = getItem(position)
+    val b = holder.b
+
+    // icon overlay
+    b.icType.visibility = if (item.kind == MediaKind.VIDEO) View.VISIBLE else View.GONE
+
+    // preview
+    b.thumb.scaleType = ImageView.ScaleType.CENTER_CROP
+    b.thumb.load(item.uri, imageLoader) {
+      crossfade(true)
+      allowHardware(false)
     }
-    class VH(v: View): RecyclerView.ViewHolder(v) {
-        val thumb: ImageView = v.findViewById(R.id.thumb)
-        val title: TextView = v.findViewById(R.id.title)
-        val subtitle: TextView = v.findViewById(R.id.subtitle)
-    }
+
+    // selection overlay
+    b.selOverlay.visibility = if (isSelected(item)) View.VISIBLE else View.GONE
+
+    b.root.setOnClickListener { onToggle(item); notifyItemChanged(position) }
+  }
 }
+
+fun provideImageLoader(view: View): ImageLoader =
+  ImageLoader.Builder(view.context)
+    .components { add(VideoFrameDecoder.Factory()) }
+    .build()
