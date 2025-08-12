@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">RecoverEasy</string>
+    <string name="images">Images</string>
+    <string name="videos">Videos</string>
+    <string name="audios">Audio</string>
+    <string name="ready">Ready</string>
+</resources>
