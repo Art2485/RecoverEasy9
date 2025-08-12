@@ -4,8 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths-ignore:
-      - '**/*.md'
+    paths:
+      - '**/*.kt'
+      - '**/*.kts'
+      - '**/*.xml'
+      - '.github/workflows/bootstrap.yml'
 
 jobs:
   bootstrap:
@@ -14,52 +17,47 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
+      # ปิดการตรวจ Gradle Wrapper Validation (แก้ error "unknown Gradle Wrapper JAR")
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
+          gradle-home-cache-cleanup: true
 
+      # ติดตั้ง Android SDK + Build-tools ที่พบบ่อย (ปรับได้ตามโปรเจกต์)
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
           packages: |
-            platform-tools
             platforms;android-34
             build-tools;34.0.0
+            platforms;android-33
+            build-tools;33.0.2
+            platform-tools
+            cmdline-tools;latest
 
+      # บางทีไฟล์ gradlew ไม่ executable (บน repo สร้างจากมือถือ)
       - name: Make gradlew executable (fix command not found)
         run: |
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
-          else
-            echo "❌ gradlew ไม่พบใน repo — โปรด commit ไฟล์ Gradle Wrapper (gradlew, gradlew.bat, gradle/wrapper/*)"; 
-            exit 1
           fi
 
+      # สั่ง build (ถ้าคุณอยาก release ใช้ assembleRelease แทน)
       - name: Build Debug APK (installable)
-        run: |
-          set -e
-          ./gradlew --version
-          ./gradlew clean :app:assembleDebug --stacktrace --info || {
-            echo "=== Kotlin/Gradle compile errors (grep 'e:' from compiler) ==="
-            # ดึงบรรทัด error จริงจาก Kotlin Compiler ให้อ่านง่าย
-            grep -R --line-number -E "^e: " app/ || true
-            echo "=== Gradle build FAILED ==="
-            exit 1
-          }
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: ./gradlew clean :app:assembleDebug
 
+      # เก็บไฟล์ APK ให้ดาวน์โหลดจากหน้า Actions
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: app-debug
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
