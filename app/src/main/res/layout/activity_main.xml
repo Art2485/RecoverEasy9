@@ -1,16 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content"
-        app:title="@string/app_name" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="horizontal" android:padding="8dp">
-        <Button android:id="@+id/btnImages" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/images"/>
-        <Button android:id="@+id/btnVideos" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/videos"/>
-        <Button android:id="@+id/btnAudios" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/audios"/>
+    android:orientation="vertical" android:padding="16dp"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/tvScope"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="เลือกพื้นที่สแกน"
+        android:textSize="18sp"
+        android:paddingBottom="8dp"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content">
+
+        <Button
+            android:id="@+id/btnPhone"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ทั้งเครื่อง"/>
+
+        <Button
+            android:id="@+id/btnOtg"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:layout_marginStart="8dp"
+            android:text="OTG / การ์ด"/>
+
+        <Button
+            android:id="@+id/btnPick"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:layout_marginStart="8dp"
+            android:text="เลือกโฟลเดอร์"/>
     </LinearLayout>
-    <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp" android:text="@string/ready"/>
-    <androidx.recyclerview.widget.RecyclerView android:id="@+id/recycler" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingTop="8dp">
+
+        <CheckBox
+            android:id="@+id/cbDeep"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="สแกนละเอียด (Deep Scan)"/>
+
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/btnScan"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="เริ่มสแกน"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingTop="6dp">
+
+        <Button
+            android:id="@+id/btnToggleAll"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="เลือกทั้งหมด"/>
+        <TextView
+            android:id="@+id/tvCount"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="0 รายการ"/>
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingTop="8dp"/>
 </LinearLayout>
