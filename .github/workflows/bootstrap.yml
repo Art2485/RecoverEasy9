@@ -5,17 +5,14 @@ on:
   push:
     branches: [ main ]
     paths:
-      - '**/*.kt'
-      - '**/*.kts'
-      - '**/*.java'
-      - '**/*.xml'
-      - '.github/workflows/bootstrap.yml'
+      - '**/*'
+      - '!README.md'
 
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
     env:
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
       JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
       GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
 
@@ -29,47 +26,51 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ติดตั้ง commandline-tools และประกาศ PATH
+      # ติดตั้ง commandline-tools ลงใน ANDROID_HOME
       - name: Install Android SDK tools (cmdline-tools)
         shell: bash
         run: |
           set -e
-          mkdir -p "${ANDROID_SDK_ROOT}"
+          mkdir -p "${ANDROID_HOME}"
           curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_SDK_ROOT}/cmdline-tools"
-          mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
-          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "${ANDROID_SDK_ROOT}/platform-tools" >> "$GITHUB_PATH"
+          unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_HOME}/cmdline-tools"
+          mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest"
+          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
 
-      # ติดตั้งแพ็คเกจหลักของ Android SDK
       - name: Accept licenses & install SDK packages
         shell: bash
         run: |
           set -e
-          SDKM="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --sdk_root="${ANDROID_SDK_ROOT}" --licenses > /dev/null || true
-          "$SDKM" --sdk_root="${ANDROID_SDK_ROOT}" \
+          SDKM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --sdk_root="${ANDROID_HOME}" --licenses >/dev/null || true
+          "$SDKM" --sdk_root="${ANDROID_HOME}" \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0"
 
-      # ถ้า gradlew หาย/เสีย ให้บูตสแตรป wrapper ใหม่อัตโนมัติด้วย SDKMAN + Gradle CLI
+      # บังคับให้โปรเจ็กต์ชี้ SDK เดียวกัน
+      - name: Write local.properties (sdk.dir)
+        shell: bash
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          cat local.properties
+
+      # สร้าง/ซ่อม Gradle wrapper ถ้าเสีย/หาย
       - name: Bootstrap Gradle wrapper if missing/broken
         shell: bash
         run: |
           set -e
-          need_wrapper=0
-          [ ! -f ./gradlew ] && need_wrapper=1
-          # ถ้ามีไฟล์อยู่แต่บรรทัดแรกไม่ขึ้น "#!" แปลว่าไฟล์เสีย (เช่นมีเนื้อหา 404)
+          need=0
+          [ ! -f ./gradlew ] && need=1
           if [ -f ./gradlew ] && ! head -1 ./gradlew | grep -q '^#!'; then
-            need_wrapper=1
+            need=1
           fi
-          if [ "$need_wrapper" -eq 1 ]; then
-            echo "Gradle wrapper missing/broken -> generating..."
+          if [ "$need" -eq 1 ]; then
+            echo "Generating Gradle wrapper..."
             curl -s "https://get.sdkman.io" | bash
             source "$HOME/.sdkman/bin/sdkman-init.sh"
             sdk install gradle 8.9 >/dev/null
-            gradle --version
             gradle wrapper --gradle-version 8.9
           fi
           chmod +x ./gradlew
