@@ -16,13 +16,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) เขียนโปรเจ็กต์ (โครง + โค้ด + res) ลง repo ให้ครบ
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # ---------- เขียนไฟล์โปรเจ็กต์ทั้งหมด (วางทับ) ----------
       - name: Write project files
         run: |
           set -e
           mkdir -p app/src/main/java/com/recovereasy
           mkdir -p app/src/main/res/{layout,values,drawable,mipmap-anydpi-v26}
           mkdir -p gradle/wrapper
+
+          cat > gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
 
           cat > settings.gradle.kts << 'EOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
@@ -63,7 +91,8 @@ jobs:
                 proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
               }
             }
-            buildFeatures { viewBinding = true }
+            // ปิด viewBinding เพื่อตัดจุดเสี่ยงการ generate โค้ด
+            buildFeatures { }
             compileOptions {
               sourceCompatibility = JavaVersion.VERSION_17
               targetCompatibility = JavaVersion.VERSION_17
@@ -226,27 +255,31 @@ jobs:
           import android.os.Build
           import android.os.Bundle
           import android.provider.MediaStore
+          import android.widget.Button
+          import android.widget.RecyclerView
+          import android.widget.TextView
           import androidx.activity.result.contract.ActivityResultContracts
           import androidx.appcompat.app.AppCompatActivity
           import androidx.core.content.ContextCompat
           import androidx.recyclerview.widget.LinearLayoutManager
-          import com.recovereasy.databinding.ActivityMainBinding
           class MainActivity : AppCompatActivity() {
-            private lateinit var binding: ActivityMainBinding
+            private lateinit var recycler: RecyclerView
+            private lateinit var status: TextView
             private val adapter = MediaAdapter(emptyList())
             private val permissionLauncher = registerForActivityResult(
               ActivityResultContracts.RequestMultiplePermissions()
             ) { loadImages() }
             override fun onCreate(savedInstanceState: Bundle?) {
               super.onCreate(savedInstanceState)
-              binding = ActivityMainBinding.inflate(layoutInflater)
-              setContentView(binding.root)
-              setSupportActionBar(binding.toolbar)
-              binding.recycler.layoutManager = LinearLayoutManager(this)
-              binding.recycler.adapter = adapter
-              binding.btnImages.setOnClickListener { ensurePerms { loadImages() } }
-              binding.btnVideos.setOnClickListener { ensurePerms { loadVideos() } }
-              binding.btnAudios.setOnClickListener { ensurePerms { loadAudios() } }
+              setContentView(R.layout.activity_main)
+              setSupportActionBar(findViewById(R.id.toolbar))
+              recycler = findViewById(R.id.recycler)
+              status = findViewById(R.id.status)
+              recycler.layoutManager = LinearLayoutManager(this)
+              recycler.adapter = adapter
+              findViewById<Button>(R.id.btnImages).setOnClickListener { ensurePerms { loadImages() } }
+              findViewById<Button>(R.id.btnVideos).setOnClickListener { ensurePerms { loadVideos() } }
+              findViewById<Button>(R.id.btnAudios).setOnClickListener { ensurePerms { loadAudios() } }
               ensurePerms { loadImages() }
             }
             private fun ensurePerms(onOk: () -> Unit) {
@@ -260,19 +293,19 @@ jobs:
               adapter.submit(query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.MIME_TYPE),
                 false, MediaStore.Images.Media._ID))
-              binding.status.text = getString(R.string.images)
+              status.text = getString(R.string.images)
             }
             private fun loadVideos() {
               adapter.submit(query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.MIME_TYPE),
                 false, MediaStore.Video.Media._ID))
-              binding.status.text = getString(R.string.videos)
+              status.text = getString(R.string.videos)
             }
             private fun loadAudios() {
               adapter.submit(query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.DISPLAY_NAME, MediaStore.Audio.Media.MIME_TYPE),
                 true, MediaStore.Audio.Media._ID))
-              binding.status.text = getString(R.string.audios)
+              status.text = getString(R.string.audios)
             }
             private fun query(collection: Uri, projection: Array<String>, isAudio: Boolean, idColumn: String): List<MediaItem> {
               val items = mutableListOf<MediaItem>()
@@ -292,34 +325,19 @@ jobs:
             }
           }
           EOF
+      # ---------- จบส่วนเขียนไฟล์ ----------
 
-      # 2) ติดตั้ง JDK และ Android SDK ให้ครบ
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Install Android SDK components
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-      
-      # 3) ดาวน์โหลด Gradle 8.9 แล้วให้มันสร้าง wrapper (กันปัญหา 404)
-      - name: Bootstrap Gradle Wrapper
+      - name: Bootstrap Gradle Wrapper (no raw link)
         run: |
           set -e
           curl -sL https://services.gradle.org/distributions/gradle-8.9-bin.zip -o gradle-8.9-bin.zip
           unzip -q gradle-8.9-bin.zip -d $HOME
-          $HOME/gradle-8.9/bin/gradle --version
           $HOME/gradle-8.9/bin/gradle wrapper --gradle-version 8.9
           chmod +x gradlew
 
-      # 4) Build APK
       - name: Build Debug APK (installable)
-        run: ./gradlew clean :app:assembleDebug --stacktrace
+        run: ./gradlew clean :app:assembleDebug --info --stacktrace
 
-      # 5) อัปโหลดไฟล์เป็น artifact และสร้าง Release ให้โหลดได้
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
