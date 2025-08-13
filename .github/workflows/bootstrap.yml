@@ -1,99 +1,69 @@
-name: Bootstrap Android Project, Build & Release APK
+name: Android CI — Build installable APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
 
 jobs:
-  bootstrap:
+  build:
     runs-on: ubuntu-latest
     env:
-      ANDROID_HOME: ${{ github.workspace }}/android-sdk
       JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17 (Temurin)
+      - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Install Android SDK tools (cmdline-tools)
-        shell: bash
-        run: |
-          set -e
-          mkdir -p "${ANDROID_HOME}"
-          curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_HOME}/cmdline-tools"
-          mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest"
-          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
+      # ติดตั้ง Android SDK แบบทางการ ครบทั้ง cmdline-tools + licenses
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Accept licenses & install SDK packages
-        shell: bash
-        run: |
-          set -e
-          SDKM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --sdk_root="${ANDROID_HOME}" --licenses >/dev/null || true
-          "$SDKM" --sdk_root="${ANDROID_HOME}" \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-
+      # เขียน local.properties ให้ Gradle มอง SDK เจอแน่นอน
       - name: Write local.properties (sdk.dir)
-        shell: bash
-        run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          cat local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Bootstrap Gradle wrapper if missing/broken
-        shell: bash
-        run: |
-          set -e
-          need=0
-          [ ! -f ./gradlew ] && need=1
-          if [ -f ./gradlew ] && ! head -1 ./gradlew | grep -q '^#!'; then
-            need=1
-          fi
-          if [ "$need" -eq 1 ]; then
-            echo "Generating Gradle wrapper..."
-            curl -s "https://get.sdkman.io" | bash
-            source "$HOME/.sdkman/bin/sdkman-init.sh"
-            sdk install gradle 8.9 >/dev/null
-            gradle wrapper --gradle-version 8.9
-          fi
-          chmod +x ./gradlew
-
-      - name: Setup Gradle cache
+      # เปิดแคช Gradle ให้ build เร็วขึ้น และไม่เช็ค wrapper เข้มเกินไป
+      - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: false
           gradle-home-cache-cleanup: true
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Kill Gradle & clean
-        shell: bash
         run: |
           ./gradlew --stop || true
           ./gradlew clean
 
-      - name: Diagnose duplicate classes (dependency tree)
-        shell: bash
-        run: |
-          ./gradlew :app:dependencies --configuration debugRuntimeClasspath
-
+      # สั่ง build + เก็บ log แบบละเอียด
       - name: Build Debug APK (installable)
-        shell: bash
+        id: build
         run: |
-          ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug
+          set -o pipefail
+          ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug | tee buildlog.txt
 
-      - name: Upload APK
+      # อัปโหลด log เสมอ เพื่อดู error ต้นเหตุได้ชัด
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: buildlog
+          path: buildlog.txt
+
+      # อัปโหลด APK เมื่อ build ผ่าน
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
           path: app/build/outputs/apk/debug/*.apk
