@@ -52,7 +52,7 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat local.properties
 
-      # ✅ ไม่ใช้ sdkman แล้ว — ดาวน์โหลด Gradle zip มากางแล้วสั่ง wrapper โดยตรง
+      # ไม่ใช้ sdkman — โหลด Gradle ZIP แล้วสั่ง wrapper โดยตรง
       - name: Bootstrap Gradle wrapper if missing/broken
         shell: bash
         run: |
@@ -71,6 +71,7 @@ jobs:
             unzip -q "$TMP/gradle.zip" -d "$TMP"
             "$TMP/gradle-${GRADLE_VER}/bin/gradle" wrapper --gradle-version ${GRADLE_VER}
           fi
+          sed -i 's/\r$//' gradlew || true
           chmod +x ./gradlew
 
       - name: Setup Gradle cache
