@@ -1,157 +1,158 @@
 package com.recovereasy
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.view.View
-import android.widget.*
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
+import android.widget.CheckBox
+import android.widget.TextView
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import kotlinx.coroutines.Job
+import coil.Coil
+import coil.ImageLoader
+import coil.decode.VideoFrameDecoder
+import com.recovereasy.storage.DeepScanner
+import com.recovereasy.storage.OtgPicker
+import com.recovereasy.storage.SafeCopier
+import com.recovereasy.storage.FileRepair
+import com.recovereasy.storage.ScannedItem
+import com.recovereasy.ui.FileAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
-    private lateinit var tvScope: TextView
-    private lateinit var btnAllDevice: Button
-    private lateinit var btnOtg: Button
-    private lateinit var btnPickFolder: Button
-    private lateinit var cbDeep: CheckBox
-    private lateinit var btnScan: Button
-    private lateinit var btnSelectAll: Button
-    private lateinit var tvSelected: TextView
-    private lateinit var progress: ProgressBar
-    private lateinit var rv: RecyclerView
-    private lateinit var adapter: MediaAdapter
+    private var otgTreeUri: Uri? = null
+    private lateinit var otgPicker: OtgPicker
 
-    private var pickedTree: Uri? = null
-    private var mode: Mode = Mode.ALL_DEVICE
-    private var scanJob: Job? = null
+    private lateinit var list: RecyclerView
+    private lateinit var adapter: FileAdapter
+    private lateinit var txtCount: TextView
+    private lateinit var chkDeep: CheckBox
 
-    enum class Mode { ALL_DEVICE, TREE }
-
-    private val reqPerms = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* ignore; กดสแกนอีกครั้งได้เลย */ }
-
-    private val pickTree = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        uri ?: return@registerForActivityResult
-        contentResolver.takePersistableUriPermission(
-            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-        )
-        pickedTree = uri
-        mode = Mode.TREE
-        tvScope.text = "พื้นที่สแกน: ${getTreeLabel(uri)}"
-    }
+    private val selected = LinkedHashSet<ScannedItem>()
+    private var lastScan: List<ScannedItem> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        tvScope = findViewById(R.id.tvScope)
-        btnAllDevice = findViewById(R.id.btnAllDevice)
-        btnOtg = findViewById(R.id.btnOtg)
-        btnPickFolder = findViewById(R.id.btnPickFolder)
-        cbDeep = findViewById(R.id.cbDeepScan)
-        btnScan = findViewById(R.id.btnScan)
-        btnSelectAll = findViewById(R.id.btnSelectAll)
-        tvSelected = findViewById(R.id.tvSelected)
-        progress = findViewById(R.id.progress)
-        rv = findViewById(R.id.rv)
+        // ทำให้ Coil รองรับวิดีโอเฟรม
+        val imgLoader = ImageLoader.Builder(this)
+            .components { add(VideoFrameDecoder.Factory()) }
+            .build()
+        Coil.setImageLoader(imgLoader)
 
-        rv.layoutManager = GridLayoutManager(this, 3)
-        adapter = MediaAdapter { tvSelected.text = "$it รายการ" }
-        rv.adapter = adapter
-
-        btnAllDevice.setOnClickListener {
-            mode = Mode.ALL_DEVICE
-            tvScope.text = "พื้นที่สแกน: ทั้งเครื่อง (เร็ว)"
-        }
-        btnOtg.setOnClickListener { pickTree.launch(null) }       // user เลือก OTG root
-        btnPickFolder.setOnClickListener { pickTree.launch(null) } // หรือเลือกโฟลเดอร์
-
-        btnScan.setOnClickListener { startScan() }
-
-        btnSelectAll.setOnClickListener {
-            val selectAll = adapter.selectedCount() != adapter.itemCount
-            adapter.toggleAll(selectAll)
-            btnSelectAll.text = if (selectAll) "ยกเลิกทั้งหมด" else "เลือกทั้งหมด"
+        otgPicker = OtgPicker(this) { picked ->
+            otgTreeUri = picked
+            toast("เลือก OTG แล้ว")
         }
 
-        requestNeededPermissionsOnce()
-    }
+        // binding
+        findViewById<android.view.View>(R.id.btnOtg).setOnClickListener { otgPicker.open(otgTreeUri) }
+        findViewById<android.view.View>(R.id.btnStartScan).setOnClickListener { startScan() }
+        findViewById<android.view.View>(R.id.btnToggleAll).setOnClickListener { toggleAll() }
+        findViewById<android.view.View>(R.id.btnCopy).setOnClickListener { copySelected() }
+        findViewById<android.view.View>(R.id.btnRepair).setOnClickListener { repairSelected() }
 
-    private fun requestNeededPermissionsOnce() {
-        val needs = buildList {
-            if (Build.VERSION.SDK_INT >= 33) {
-                add(Manifest.permission.READ_MEDIA_IMAGES)
-                add(Manifest.permission.READ_MEDIA_VIDEO)
-                add(Manifest.permission.READ_MEDIA_AUDIO)
-            } else {
-                add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        chkDeep = findViewById(R.id.chkDeep)
+        txtCount = findViewById(R.id.txtCount)
+        list = findViewById(R.id.recycler)
+        list.layoutManager = LinearLayoutManager(this)
+
+        adapter = FileAdapter(
+            onToggle = { item, checked ->
+                if (checked) selected.add(item) else selected.remove(item)
+                updateCount()
             }
-        }.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (needs.isNotEmpty()) reqPerms.launch(needs.toTypedArray())
+        )
+        list.adapter = adapter
+
+        updateCount()
     }
 
     private fun startScan() {
-        scanJob?.cancel()
-        progress.visibility = View.VISIBLE
-        progress.progress = 0
+        val tree = otgTreeUri
+        if (tree == null) {
+            toast("กรุณาเลือก OTG/การ์ดก่อน")
+            return
+        }
+        val deep = chkDeep.isChecked
+        lifecycleScope.launch {
+            toast(if (deep) "กำลังสแกน (ลึก)..." else "กำลังสแกน (เร็ว)...")
+            val items = DeepScanner.scanTree(this@MainActivity, tree, deep)
+            lastScan = items
+            selected.clear()
+            adapter.submit(items)
+            updateCount()
+            toast("สแกนเสร็จ พบ ${items.size} ไฟล์")
+        }
+    }
 
-        scanJob = lifecycleScope.launch {
-            try {
-                val items = when (mode) {
-                    Mode.ALL_DEVICE -> FileScanner.quickScan(this@MainActivity) {
-                        progress.progress = it
-                    }
-                    Mode.TREE -> {
-                        val tree = pickedTree
-                        if (tree == null) {
-                            Toast.makeText(this@MainActivity, "ยังไม่เลือกโฟลเดอร์/OTG", Toast.LENGTH_SHORT).show()
-                            progress.visibility = View.GONE
-                            return@launch
-                        }
-                        if (!cbDeep.isChecked) {
-                            // แม้ไม่ติ๊ก Deep ก็ยังต้องเดินใน Tree แต่จะหยาบ (ปล่อย same)
-                        }
-                        FileScanner.deepScanTree(this@MainActivity, tree) {
-                            progress.progress = it
-                        }
-                    }
+    private fun toggleAll() {
+        if (selected.size < lastScan.size) {
+            selected.clear()
+            selected.addAll(lastScan)
+            adapter.setAllChecked(true)
+        } else {
+            selected.clear()
+            adapter.setAllChecked(false)
+        }
+        updateCount()
+    }
+
+    private fun copySelected() {
+        if (selected.isEmpty()) { toast("ยังไม่เลือกรายการ"); return }
+        // ให้ผู้ใช้เลือกปลายทาง (โฟลเดอร์ใดก็ได้ผ่าน SAF)
+        val picker = OtgPicker(this) { dest ->
+            lifecycleScope.launch(Dispatchers.IO) {
+                var i = 0
+                for (item in selected) {
+                    SafeCopier.copyToDir(
+                        context = this@MainActivity,
+                        source = item.uri,
+                        destDirTree = dest,
+                        desiredName = item.name
+                    )
+                    i++
                 }
-                adapter.submitList(items)
-                tvSelected.text = "0 รายการ"
-                btnSelectAll.text = "เลือกทั้งหมด"
-            } catch (e: SecurityException) {
-                Toast.makeText(this@MainActivity, "สิทธิ์ไม่พอ กรุณาอนุญาตการเข้าถึงไฟล์", Toast.LENGTH_LONG).show()
-                // เปิดหน้า Permission (กรณีผู้ใช้ปิดถาวร)
-                val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                i.data = Uri.parse("package:$packageName")
-                startActivity(i)
-            } finally {
-                progress.visibility = View.GONE
+                withContext(Dispatchers.Main) { toast("คัดลอกเสร็จ $i ไฟล์") }
             }
         }
+        picker.open()
     }
 
-    private fun getTreeLabel(uri: Uri): String {
-        val last = uri.lastPathSegment ?: return "โฟลเดอร์ที่เลือก"
-        return when {
-            last.contains("otg", true) || last.contains("usb", true) -> "OTG"
-            else -> "โฟลเดอร์ที่เลือก"
+    private fun repairSelected() {
+        if (selected.isEmpty()) { toast("ยังไม่เลือกรายการ"); return }
+        val picker = OtgPicker(this) { dest ->
+            lifecycleScope.launch(Dispatchers.IO) {
+                var ok = 0
+                for (f in selected) {
+                    try {
+                        if (f.isImage) {
+                            FileRepair.tryRepairImageTo(this@MainActivity, f.uri, dest, f.name.substringBeforeLast('.'))
+                            ok++
+                        } else if (f.isVideo) {
+                            FileRepair.tryRepairVideoTo(this@MainActivity, f.uri, dest, f.name.substringBeforeLast('.'))
+                            ok++
+                        } else {
+                            // ไฟล์อื่นคัดลอกแทน
+                            SafeCopier.copyToDir(this@MainActivity, f.uri, dest, f.name)
+                            ok++
+                        }
+                    } catch (_: Exception) { /* ข้ามไฟล์ที่ซ่อมไม่ได้ */ }
+                }
+                withContext(Dispatchers.Main) { toast("ซ่อม/คัดลอกเสร็จ $ok ไฟล์") }
+            }
         }
+        picker.open()
     }
+
+    private fun updateCount() {
+        txtCount.text = "${selected.size} / ${lastScan.size} รายการ"
+    }
+
+    private fun toast(msg: String) =
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
 }
