@@ -1,76 +1,99 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical" android:padding="16dp"
-    android:layout_width="match_parent" android:layout_height="match_parent">
-
-    <TextView
-        android:id="@+id/tvScope"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="เลือกพื้นที่สแกน"
-        android:textSize="18sp"
-        android:paddingBottom="8dp"/>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    tools:context=".MainActivity">
 
     <LinearLayout
-        android:orientation="horizontal"
+        android:id="@+id/controls"
+        android:orientation="vertical"
+        android:padding="16dp"
         android:layout_width="match_parent" android:layout_height="wrap_content">
 
-        <Button
-            android:id="@+id/btnPhone"
-            android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="ทั้งเครื่อง"/>
-
-        <Button
-            android:id="@+id/btnOtg"
-            android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:layout_marginStart="8dp"
-            android:text="OTG / การ์ด"/>
-
-        <Button
-            android:id="@+id/btnPick"
-            android:layout_width="0dp" android:layout_height="wrap_content"
-            android:layout_weight="1" android:layout_marginStart="8dp"
-            android:text="เลือกโฟลเดอร์"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:paddingTop="8dp">
-
-        <CheckBox
-            android:id="@+id/cbDeep"
-            android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="สแกนละเอียด (Deep Scan)"/>
-
-        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
-
-        <Button
-            android:id="@+id/btnScan"
-            android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="เริ่มสแกน"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:paddingTop="6dp">
-
-        <Button
-            android:id="@+id/btnToggleAll"
-            android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="เลือกทั้งหมด"/>
         <TextView
-            android:id="@+id/tvCount"
-            android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:text="0 รายการ"/>
+            android:id="@+id/tvScope"
+            android:text="พื้นที่สแกน: ทั้งเครื่อง (เร็ว)"
+            android:textStyle="bold"
+            android:textSize="20sp"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginTop="12dp"
+            android:layout_width="match_parent" android:layout_height="wrap_content">
+
+            <Button
+                android:id="@+id/btnAllDevice"
+                style="?attr/materialButtonOutlinedStyle"
+                android:text="ทั้งเครื่อง"
+                android:layout_marginEnd="12dp"
+                android:layout_width="0dp" android:layout_height="48dp"
+                android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/btnOtg"
+                style="?attr/materialButtonOutlinedStyle"
+                android:text="OTG / การ์ด"
+                android:layout_marginEnd="12dp"
+                android:layout_width="0dp" android:layout_height="48dp"
+                android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/btnPickFolder"
+                style="?attr/materialButtonOutlinedStyle"
+                android:text="เลือกโฟลเดอร์"
+                android:layout_width="0dp" android:layout_height="48dp"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent" android:layout_height="wrap_content">
+
+            <CheckBox
+                android:id="@+id/cbDeepScan"
+                android:text="สแกนละเอียด (Deep Scan)"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1"/>
+
+            <Button
+                android:id="@+id/btnScan"
+                android:text="เริ่มสแกน"
+                android:layout_width="140dp" android:layout_height="48dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp"
+            android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button
+                android:id="@+id/btnSelectAll"
+                android:text="เลือกทั้งหมด"
+                android:layout_width="160dp" android:layout_height="44dp"/>
+            <TextView
+                android:id="@+id/tvSelected"
+                android:text="0 รายการ"
+                android:layout_marginStart="12dp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        </LinearLayout>
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv"
-        android:layout_width="match_parent" android:layout_height="0dp"
-        android:layout_weight="1"
-        android:paddingTop="8dp"/>
-</LinearLayout>
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:layout_marginTop="8dp"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:layout_gravity="bottom"/>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:max="100"
+        android:visibility="gone"
+        android:layout_width="match_parent" android:layout_height="4dp"
+        android:layout_gravity="top"/>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
