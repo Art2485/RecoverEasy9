@@ -1,158 +1,154 @@
 package com.recovereasy
 
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.widget.CheckBox
-import android.widget.TextView
-import androidx.activity.ComponentActivity
-import androidx.lifecycle.lifecycleScope
+import android.provider.DocumentsContract
+import android.view.View
+import android.widget.Toast
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import coil.Coil
-import coil.ImageLoader
-import coil.decode.VideoFrameDecoder
-import com.recovereasy.storage.DeepScanner
-import com.recovereasy.storage.OtgPicker
-import com.recovereasy.storage.SafeCopier
-import com.recovereasy.storage.FileRepair
-import com.recovereasy.storage.ScannedItem
-import com.recovereasy.ui.FileAdapter
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.recovereasy.databinding.ActivityMainBinding
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
-    private var otgTreeUri: Uri? = null
-    private lateinit var otgPicker: OtgPicker
-
-    private lateinit var list: RecyclerView
+    private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: FileAdapter
-    private lateinit var txtCount: TextView
-    private lateinit var chkDeep: CheckBox
 
-    private val selected = LinkedHashSet<ScannedItem>()
-    private var lastScan: List<ScannedItem> = emptyList()
+    private lateinit var pickOtgDir: ActivityResultLauncher<Intent>
+    private lateinit var pickFolderDir: ActivityResultLauncher<Intent>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-        // ทำให้ Coil รองรับวิดีโอเฟรม
-        val imgLoader = ImageLoader.Builder(this)
-            .components { add(VideoFrameDecoder.Factory()) }
-            .build()
-        Coil.setImageLoader(imgLoader)
-
-        otgPicker = OtgPicker(this) { picked ->
-            otgTreeUri = picked
-            toast("เลือก OTG แล้ว")
+        // RecyclerView
+        adapter = FileAdapter()
+        binding.recycler.apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = this@MainActivity.adapter
+            itemAnimator = null
+            setHasFixedSize(true)
         }
 
-        // binding
-        findViewById<android.view.View>(R.id.btnOtg).setOnClickListener { otgPicker.open(otgTreeUri) }
-        findViewById<android.view.View>(R.id.btnStartScan).setOnClickListener { startScan() }
-        findViewById<android.view.View>(R.id.btnToggleAll).setOnClickListener { toggleAll() }
-        findViewById<android.view.View>(R.id.btnCopy).setOnClickListener { copySelected() }
-        findViewById<android.view.View>(R.id.btnRepair).setOnClickListener { repairSelected() }
+        // ActivityResult launchers
+        pickOtgDir = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { res ->
+            val uri = res.data?.data ?: return@registerForActivityResult
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            scanUriRoot(uri)
+        }
 
-        chkDeep = findViewById(R.id.chkDeep)
-        txtCount = findViewById(R.id.txtCount)
-        list = findViewById(R.id.recycler)
-        list.layoutManager = LinearLayoutManager(this)
+        pickFolderDir = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { res ->
+            val uri = res.data?.data ?: return@registerForActivityResult
+            scanUriRoot(uri)
+        }
 
-        adapter = FileAdapter(
-            onToggle = { item, checked ->
-                if (checked) selected.add(item) else selected.remove(item)
-                updateCount()
+        // ปุ่ม “ทั้งเครื่อง (เร็ว)”
+        binding.btnAll.setOnClickListener {
+            // สแกน storage ที่เมานท์ทั้งหมดผ่าน MediaStore + SAF (อย่างง่ายเริ่มที่ primary)
+            val tree = DocumentsContract.buildTreeDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:"
+            )
+            scanUriRoot(tree)
+        }
+
+        // ปุ่ม “OTG / การ์ด”
+        binding.btnOtg.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
+                if (Build.VERSION.SDK_INT >= 26) {
+                    putExtra(DocumentsContract.EXTRA_INITIAL_URI, Uri.parse("content://com.android.externalstorage.documents/tree/primary%3A"))
+                }
             }
-        )
-        list.adapter = adapter
+            pickOtgDir.launch(intent)
+        }
 
-        updateCount()
+        // ปุ่ม “เลือกโฟลเดอร์”
+        binding.btnPickFolder.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                )
+            }
+            pickFolderDir.launch(intent)
+        }
+
+        // ปุ่ม “เริ่มสแกน”
+        binding.btnScan.setOnClickListener {
+            Toast.makeText(this, "เลือกพื้นที่หรือโฟลเดอร์ก่อน แล้วกดสแกนค่ะ", Toast.LENGTH_SHORT).show()
+        }
+
+        // ปุ่ม “เลือกทั้งหมด”
+        binding.btnToggleAll.setOnClickListener {
+            adapter.toggleAll()
+            updateSelectedCount()
+        }
+
+        updateSelectedCount()
     }
 
-    private fun startScan() {
-        val tree = otgTreeUri
-        if (tree == null) {
-            toast("กรุณาเลือก OTG/การ์ดก่อน")
+    private fun scanUriRoot(rootUri: Uri) {
+        binding.progress.visibility = View.VISIBLE
+        binding.empty.visibility = View.GONE
+        binding.txtCount.text = "กำลังสแกน…"
+
+        val rootDf = DocumentFile.fromTreeUri(this, rootUri)
+        if (rootDf == null || !rootDf.isDirectory) {
+            binding.progress.visibility = View.GONE
+            Toast.makeText(this, "เข้าถึงโฟลเดอร์ไม่ได้", Toast.LENGTH_SHORT).show()
             return
         }
-        val deep = chkDeep.isChecked
-        lifecycleScope.launch {
-            toast(if (deep) "กำลังสแกน (ลึก)..." else "กำลังสแกน (เร็ว)...")
-            val items = DeepScanner.scanTree(this@MainActivity, tree, deep)
-            lastScan = items
-            selected.clear()
-            adapter.submit(items)
-            updateCount()
-            toast("สแกนเสร็จ พบ ${items.size} ไฟล์")
-        }
-    }
 
-    private fun toggleAll() {
-        if (selected.size < lastScan.size) {
-            selected.clear()
-            selected.addAll(lastScan)
-            adapter.setAllChecked(true)
-        } else {
-            selected.clear()
-            adapter.setAllChecked(false)
-        }
-        updateCount()
-    }
-
-    private fun copySelected() {
-        if (selected.isEmpty()) { toast("ยังไม่เลือกรายการ"); return }
-        // ให้ผู้ใช้เลือกปลายทาง (โฟลเดอร์ใดก็ได้ผ่าน SAF)
-        val picker = OtgPicker(this) { dest ->
-            lifecycleScope.launch(Dispatchers.IO) {
-                var i = 0
-                for (item in selected) {
-                    SafeCopier.copyToDir(
-                        context = this@MainActivity,
-                        source = item.uri,
-                        destDirTree = dest,
-                        desiredName = item.name
+        // สแกนแบบ breadth-first โดยใช้ SAF => ครอบคลุม OTG/การ์ด ได้แน่
+        val results = mutableListOf<MediaItem>()
+        fun walk(df: DocumentFile) {
+            df.listFiles().forEach { f ->
+                if (f.isDirectory) {
+                    walk(f)
+                } else if (f.isFile) {
+                    // เก็บทุกสกุลไฟล์
+                    results.add(
+                        MediaItem(
+                            uri = f.uri,
+                            name = f.name ?: "(no name)",
+                            size = f.length(),
+                            mime = f.type ?: ""
+                        )
                     )
-                    i++
                 }
-                withContext(Dispatchers.Main) { toast("คัดลอกเสร็จ $i ไฟล์") }
             }
         }
-        picker.open()
-    }
-
-    private fun repairSelected() {
-        if (selected.isEmpty()) { toast("ยังไม่เลือกรายการ"); return }
-        val picker = OtgPicker(this) { dest ->
-            lifecycleScope.launch(Dispatchers.IO) {
-                var ok = 0
-                for (f in selected) {
-                    try {
-                        if (f.isImage) {
-                            FileRepair.tryRepairImageTo(this@MainActivity, f.uri, dest, f.name.substringBeforeLast('.'))
-                            ok++
-                        } else if (f.isVideo) {
-                            FileRepair.tryRepairVideoTo(this@MainActivity, f.uri, dest, f.name.substringBeforeLast('.'))
-                            ok++
-                        } else {
-                            // ไฟล์อื่นคัดลอกแทน
-                            SafeCopier.copyToDir(this@MainActivity, f.uri, dest, f.name)
-                            ok++
-                        }
-                    } catch (_: Exception) { /* ข้ามไฟล์ที่ซ่อมไม่ได้ */ }
-                }
-                withContext(Dispatchers.Main) { toast("ซ่อม/คัดลอกเสร็จ $ok ไฟล์") }
-            }
+        try {
+            walk(rootDf)
+        } catch (t: Throwable) {
+            t.printStackTrace()
         }
-        picker.open()
+
+        binding.progress.visibility = View.GONE
+        adapter.submitList(results)
+        binding.empty.visibility = if (results.isEmpty()) View.VISIBLE else View.GONE
+        updateSelectedCount()
     }
 
-    private fun updateCount() {
-        txtCount.text = "${selected.size} / ${lastScan.size} รายการ"
+    private fun updateSelectedCount() {
+        binding.txtCount.text = "${adapter.selectedCount()} / ${adapter.itemCount} รายการ"
     }
-
-    private fun toast(msg: String) =
-        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
 }
