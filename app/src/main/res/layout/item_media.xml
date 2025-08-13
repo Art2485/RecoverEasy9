@@ -10,7 +10,7 @@
         android:layout_width="72dp"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:background="#EEE"/>
+        android:background="#EEE" />
 
     <LinearLayout
         android:orientation="vertical"
@@ -25,21 +25,21 @@
             android:maxLines="1"
             android:ellipsize="end"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content" />
 
         <TextView
             android:id="@+id/meta"
             android:textSize="12sp"
-            android:textColor="#666"
+            android:textColor="#666666"
             android:maxLines="1"
             android:ellipsize="end"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content" />
     </LinearLayout>
 
     <CheckBox
         android:id="@+id/check"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"/>
+        android:layout_gravity="center_vertical" />
 </LinearLayout>
