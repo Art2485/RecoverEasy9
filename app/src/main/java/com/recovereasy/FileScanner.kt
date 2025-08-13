@@ -1,188 +1,88 @@
 package com.recovereasy
 
-import android.content.ContentUris
-import android.content.Context
-import android.database.Cursor
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
-import androidx.documentfile.provider.DocumentFile
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import coil.load
+import coil.request.ImageRequest
+import coil.size.Scale
 
-object FileScanner {
+data class MediaItem(
+    val uri: Uri,
+    val name: String,
+    val size: Long,
+    val mime: String,
+    var checked: Boolean = false
+)
 
-    // ---------- Quick scan: ทั้งเครื่อง (media) + ถังขยะ ----------
-    suspend fun quickScan(context: Context, onProgress: (Int) -> Unit): List<MediaItem> =
-        withContext(Dispatchers.IO) {
-            val all = mutableListOf<MediaItem>()
-            val steps = 3 + if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) 1 else 0
-            var done = 0
+class FileAdapter :
+    ListAdapter<MediaItem, FileAdapter.VH>(diff) {
 
-            all += queryMediaStore(context, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-            onProgress(++done * 100 / steps)
+    companion object {
+        private val diff = object : DiffUtil.ItemCallback<MediaItem>() {
+            override fun areItemsTheSame(oldItem: MediaItem, newItem: MediaItem) =
+                oldItem.uri == newItem.uri
 
-            all += queryMediaStore(context, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-            onProgress(++done * 100 / steps)
-
-            all += queryMediaStore(context, MediaStore.Audio.Media.EXTERNAL_CONTENT_URI)
-            onProgress(++done * 100 / steps)
-
-            // Android 11+ มี is_trashed
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                all += queryTrashed(context)
-                onProgress(++done * 100 / steps)
-            }
-            all
-        }
-
-    // ---------- Deep scan: เดินแฟ้มทุกไฟล์ใน Tree (OTG/เลือกโฟลเดอร์) ----------
-    suspend fun deepScanTree(context: Context, treeUri: Uri, onProgress: (Int) -> Unit): List<MediaItem> =
-        withContext(Dispatchers.IO) {
-            val out = mutableListOf<MediaItem>()
-            val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext out
-            val all = mutableListOf<DocumentFile>()
-            fun walk(df: DocumentFile) {
-                if (df.isFile) all += df
-                else df.listFiles().forEach { walk(it) }
-            }
-            walk(root)
-
-            var i = 0
-            for (f in all) {
-                val name = f.name ?: "(unknown)"
-                val mime = f.type ?: "application/octet-stream"
-                val size = f.length()
-                val date = f.lastModified()
-
-                val isCorrupted = tryCheckCorrupted(context, f.uri, mime)
-                val duration = tryGetDuration(context, f.uri, mime)
-
-                out += MediaItem(
-                    uri = f.uri, name = name, mime = mime,
-                    size = size, date = date, durationMs = duration,
-                    isTrashed = false, isCorrupted = isCorrupted
-                )
-                i++
-                if (i % 25 == 0) onProgress((i * 100 / all.size).coerceIn(0, 100))
-            }
-            onProgress(100)
-            out
-        }
-
-    // ---------- Helpers ----------
-    private fun queryMediaStore(context: Context, base: Uri): List<MediaItem> {
-        val out = mutableListOf<MediaItem>()
-        val projection = arrayOf(
-            MediaStore.MediaColumns._ID,
-            MediaStore.MediaColumns.DISPLAY_NAME,
-            MediaStore.MediaColumns.MIME_TYPE,
-            MediaStore.MediaColumns.SIZE,
-            MediaStore.MediaColumns.DATE_MODIFIED,
-            MediaStore.Video.VideoColumns.DURATION // คืนค่าได้เฉพาะวีดีโอ/ออดิโอ
-        )
-        val cursor: Cursor? = context.contentResolver.query(
-            base, projection, null, null,
-            "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
-        )
-        cursor?.use { c ->
-            val idIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-            val nameIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-            val mimeIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
-            val sizeIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-            val dateIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
-            val durIdx = c.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
-
-            while (c.moveToNext()) {
-                val id = c.getLong(idIdx)
-                val contentUri = ContentUris.withAppendedId(base, id)
-                val mime = c.getString(mimeIdx) ?: "application/octet-stream"
-                val duration = if (durIdx >= 0 && !c.isNull(durIdx)) c.getLong(durIdx) else null
-                val corrupted = tryCheckCorrupted(context, contentUri, mime)
-
-                out += MediaItem(
-                    uri = contentUri,
-                    name = c.getString(nameIdx) ?: "(unknown)",
-                    mime = mime,
-                    size = c.getLong(sizeIdx),
-                    date = c.getLong(dateIdx) * 1000,
-                    durationMs = duration,
-                    isTrashed = false,
-                    isCorrupted = corrupted
-                )
-            }
-        }
-        return out
-    }
-
-    private fun queryTrashed(context: Context): List<MediaItem> {
-        val out = mutableListOf<MediaItem>()
-        val base = MediaStore.Files.getContentUri("external")
-        val projection = arrayOf(
-            MediaStore.MediaColumns._ID,
-            MediaStore.MediaColumns.DISPLAY_NAME,
-            MediaStore.MediaColumns.MIME_TYPE,
-            MediaStore.MediaColumns.SIZE,
-            MediaStore.MediaColumns.DATE_MODIFIED,
-            MediaStore.MediaColumns.IS_TRASHED
-        )
-        val selection = "${MediaStore.MediaColumns.IS_TRASHED}=1"
-        context.contentResolver.query(base, projection, selection, null, null)?.use { c ->
-            val idIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-            val nameIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-            val mimeIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
-            val sizeIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-            val dateIdx = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
-            while (c.moveToNext()) {
-                val uri = ContentUris.withAppendedId(base, c.getLong(idIdx))
-                out += MediaItem(
-                    uri = uri,
-                    name = c.getString(nameIdx) ?: "(unknown)",
-                    mime = c.getString(mimeIdx) ?: "application/octet-stream",
-                    size = c.getLong(sizeIdx),
-                    date = c.getLong(dateIdx) * 1000,
-                    durationMs = null,
-                    isTrashed = true,
-                    isCorrupted = false
-                )
-            }
-        }
-        return out
-    }
-
-    private fun tryCheckCorrupted(context: Context, uri: Uri, mime: String): Boolean {
-        return try {
-            when {
-                mime.startsWith("image") -> {
-                    context.contentResolver.openInputStream(uri)?.use {
-                        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeStream(it, null, opts)
-                        (opts.outWidth <= 0 || opts.outHeight <= 0)
-                    } ?: true
-                }
-                mime.startsWith("video") || mime.startsWith("audio") -> {
-                    val mmr = MediaMetadataRetriever()
-                    mmr.setDataSource(context, uri)
-                    mmr.release()
-                    false
-                }
-                else -> false
-            }
-        } catch (_: Throwable) {
-            true
+            override fun areContentsTheSame(oldItem: MediaItem, newItem: MediaItem) =
+                oldItem == newItem
         }
     }
 
-    private fun tryGetDuration(context: Context, uri: Uri, mime: String): Long? {
-        if (!(mime.startsWith("video") || mime.startsWith("audio"))) return null
-        return try {
-            val mmr = MediaMetadataRetriever()
-            mmr.setDataSource(context, uri)
-            val d = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong()
-            mmr.release()
-            d
-        } catch (_: Throwable) { null }
+    fun selectedCount(): Int = currentList.count { it.checked }
+
+    fun toggleAll() {
+        val allSelected = currentList.all { it.checked }
+        val updated = currentList.map { it.copy(checked = !allSelected) }
+        submitList(updated)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val v = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_media, parent, false)
+        return VH(v)
+    }
+
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+        private val thumb: ImageView = v.findViewById(R.id.thumb)
+        private val name: TextView = v.findViewById(R.id.name)
+        private val meta: TextView = v.findViewById(R.id.meta)
+        private val check: CheckBox = v.findViewById(R.id.check)
+
+        fun bind(item: MediaItem) {
+            name.text = item.name
+            meta.text = readableSize(item.size)
+
+            check.setOnCheckedChangeListener(null)
+            check.isChecked = item.checked
+            check.setOnCheckedChangeListener { _, isChecked ->
+                currentList[bindingAdapterPosition].checked = isChecked
+            }
+
+            // พรีวิวรูป/วิดีโอ/ไฟล์ทั่วไปด้วย Coil
+            val req = ImageRequest.Builder(thumb.context)
+                .data(item.uri)
+                .crossfade(true)
+                .scale(Scale.FILL)
+                .build()
+            thumb.load(req)
+        }
+
+        private fun readableSize(bytes: Long): String {
+            if (bytes <= 0) return "0 B"
+            val u = arrayOf("B", "KB", "MB", "GB", "TB")
+            val grp = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+            return String.format("%.1f %s", bytes / Math.pow(1024.0, grp.toDouble()), u[grp])
+        }
     }
 }
