@@ -43,7 +43,6 @@ android {
 
     packaging {
         resources {
-            // กันซ้ำพวกไฟล์ LICENSE/NOTICE ที่ไม่กระทบโค้ด
             excludes += setOf(
                 "META-INF/AL2.0",
                 "META-INF/LGPL2.1",
@@ -54,16 +53,27 @@ android {
     }
 }
 
-/** กัน “Duplicate class” ที่พบบ่อยบน classpath */
+/* ตัด duplicate ที่พบบ่อย + บังคับเวอร์ชันให้เหลือตัวเดียว */
 configurations.all {
-    // ถ้าถูกดึง guava แบบเต็มมา ให้กันไว้ เหลือ listenablefuture ตัวเดียว
-    exclude(group = "com.google.guava", module = "guava")
-
-    // annotations เก่า ๆ ที่ชอบชนกัน (ไม่กระทบ runtime)
+    // ตัดของซ้ำที่ไม่จำเป็นบน classpath
     exclude(group = "com.google.code.findbugs", module = "jsr305")
     exclude(group = "org.checkerframework", module = "checker-compat-qual")
     exclude(group = "org.checkerframework", module = "checker-qual")
     exclude(group = "com.intellij", module = "annotations")
+    // ไม่ให้ดึง guava ตัวใหญ่เข้ามา (ส่วนมากไม่ต้องใช้บน Android)
+    exclude(group = "com.google.guava", module = "guava")
+
+    resolutionStrategy {
+        // ตัวที่ชนบ่อยสุด: listenablefuture มีทั้ง 1.0 และ 9999.0-empty…
+        force("com.google.guava:listenablefuture:1.0")
+
+        // จูน Kotlin stdlib ให้ตรงกันทั้งหมด
+        force(
+            "org.jetbrains.kotlin:kotlin-stdlib:1.9.24",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.24"
+        )
+    }
 }
 
 dependencies {
@@ -75,15 +85,15 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // พรีวิวรูป/วิดีโอ
+    // แสดงพรีวิวรูป/วิดีโอ
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-video:2.6.0")
 
-    // จัดการไฟล์
+    // จัดการไฟล์ + อ่าน EXIF
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 
-    // บังคับเวอร์ชันให้ตรงกัน ลดโอกาสชน
+    // ล็อกเวอร์ชันสำคัญ ๆ ให้ตรงกัน ลดโอกาสชน
     constraints {
         implementation("androidx.core:core:1.13.1")
         implementation("androidx.core:core-ktx:1.13.1")
