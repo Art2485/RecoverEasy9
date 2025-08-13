@@ -2,144 +2,156 @@ package com.recovereasy
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.provider.Settings
 import android.view.View
+import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
-import com.recovereasy.databinding.ActivityMainBinding
-import kotlinx.coroutines.Dispatchers
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-sealed class ScanScope {
-  object PhoneFast : ScanScope()
-  data class Folder(val uri: Uri, val label: String) : ScanScope()
-  object PhoneDeep : ScanScope()
-}
 
 class MainActivity : AppCompatActivity() {
 
-  private lateinit var b: ActivityMainBinding
-  private lateinit var adapter: MediaAdapter
-  private val selected = linkedSetOf<MediaItem>()
-  private var currScope: ScanScope = ScanScope.PhoneFast
+    private lateinit var tvScope: TextView
+    private lateinit var btnAllDevice: Button
+    private lateinit var btnOtg: Button
+    private lateinit var btnPickFolder: Button
+    private lateinit var cbDeep: CheckBox
+    private lateinit var btnScan: Button
+    private lateinit var btnSelectAll: Button
+    private lateinit var tvSelected: TextView
+    private lateinit var progress: ProgressBar
+    private lateinit var rv: RecyclerView
+    private lateinit var adapter: MediaAdapter
 
-  // pick folder (ใช้ได้ทั้ง OTG/การ์ด และโฟลเดอร์ในเครื่อง)
-  private val pickTree = registerForActivityResult(
-    ActivityResultContracts.OpenDocumentTree()
-  ) { uri ->
-    if (uri != null) {
-      // persist
-      contentResolver.takePersistableUriPermission(
-        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-      )
-      currScope = ScanScope.Folder(uri, "folder")
-      b.tvScope.text = "พื้นที่สแกน: โฟลเดอร์ที่เลือก"
-    }
-  }
+    private var pickedTree: Uri? = null
+    private var mode: Mode = Mode.ALL_DEVICE
+    private var scanJob: Job? = null
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    b = ActivityMainBinding.inflate(layoutInflater)
-    setContentView(b.root)
+    enum class Mode { ALL_DEVICE, TREE }
 
-    adapter = MediaAdapter(
-      provideImageLoader(b.root),
-      onToggle = { item ->
-        if (!selected.add(item)) selected.remove(item)
-        updateSelectedUi()
-      },
-      isSelected = { selected.contains(it) }
-    )
-    b.rv.layoutManager = GridLayoutManager(this, 3)
-    b.rv.adapter = adapter
+    private val reqPerms = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* ignore; กดสแกนอีกครั้งได้เลย */ }
 
-    b.btnPhone.setOnClickListener {
-      currScope = if (b.cbDeep.isChecked) ScanScope.PhoneDeep else ScanScope.PhoneFast
-      b.tvScope.text = if (b.cbDeep.isChecked) "พื้นที่สแกน: ทั้งเครื่อง (Deep)" else "พื้นที่สแกน: ทั้งเครื่อง (เร็ว)"
-    }
-    b.btnOtg.setOnClickListener {
-      // ให้ผู้ใช้เลือก root ของ USB/OTG
-      pickTree.launch(null)
-    }
-    b.btnPick.setOnClickListener { pickTree.launch(null) }
-
-    b.btnScan.setOnClickListener { startScan() }
-
-    b.btnToggleAll.setOnClickListener {
-      if (selected.size == adapter.itemCount) {
-        selected.clear()
-        b.btnToggleAll.text = "เลือกทั้งหมด"
-      } else {
-        selected.clear()
-        adapter.currentList.forEach { selected.add(it) }
-        b.btnToggleAll.text = "ยกเลิกทั้งหมด"
-      }
-      adapter.notifyDataSetChanged()
-      updateSelectedUi()
+    private val pickTree = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        contentResolver.takePersistableUriPermission(
+            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+        )
+        pickedTree = uri
+        mode = Mode.TREE
+        tvScope.text = "พื้นที่สแกน: ${getTreeLabel(uri)}"
     }
 
-    requestReadPermissionsIfNeeded()
-  }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-  private fun updateSelectedUi() {
-    b.tvCount.text = "${selected.size} รายการ"
-  }
+        tvScope = findViewById(R.id.tvScope)
+        btnAllDevice = findViewById(R.id.btnAllDevice)
+        btnOtg = findViewById(R.id.btnOtg)
+        btnPickFolder = findViewById(R.id.btnPickFolder)
+        cbDeep = findViewById(R.id.cbDeepScan)
+        btnScan = findViewById(R.id.btnScan)
+        btnSelectAll = findViewById(R.id.btnSelectAll)
+        tvSelected = findViewById(R.id.tvSelected)
+        progress = findViewById(R.id.progress)
+        rv = findViewById(R.id.rv)
 
-  private fun requestReadPermissionsIfNeeded() {
-    if (Build.VERSION.SDK_INT >= 33) {
-      permLauncher.launch(arrayOf(
-        Manifest.permission.READ_MEDIA_IMAGES,
-        Manifest.permission.READ_MEDIA_VIDEO,
-        Manifest.permission.READ_MEDIA_AUDIO
-      ))
-    } else {
-      permLauncher.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE))
+        rv.layoutManager = GridLayoutManager(this, 3)
+        adapter = MediaAdapter { tvSelected.text = "$it รายการ" }
+        rv.adapter = adapter
+
+        btnAllDevice.setOnClickListener {
+            mode = Mode.ALL_DEVICE
+            tvScope.text = "พื้นที่สแกน: ทั้งเครื่อง (เร็ว)"
+        }
+        btnOtg.setOnClickListener { pickTree.launch(null) }       // user เลือก OTG root
+        btnPickFolder.setOnClickListener { pickTree.launch(null) } // หรือเลือกโฟลเดอร์
+
+        btnScan.setOnClickListener { startScan() }
+
+        btnSelectAll.setOnClickListener {
+            val selectAll = adapter.selectedCount() != adapter.itemCount
+            adapter.toggleAll(selectAll)
+            btnSelectAll.text = if (selectAll) "ยกเลิกทั้งหมด" else "เลือกทั้งหมด"
+        }
+
+        requestNeededPermissionsOnce()
     }
-  }
 
-  private val permLauncher = registerForActivityResult(
-    ActivityResultContracts.RequestMultiplePermissions()
-  ) { /* ignore - เราจะลองสแกน ถ้าอดก็แสดงผลว่างๆ */ }
-
-  private fun ensureManageAllFilesIfNeeded(): Boolean {
-    if (currScope is ScanScope.PhoneDeep) {
-      if (!Environment.isExternalStorageManager()) {
-        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-        intent.data = Uri.parse("package:$packageName")
-        startActivity(intent)
-        return false
-      }
+    private fun requestNeededPermissionsOnce() {
+        val needs = buildList {
+            if (Build.VERSION.SDK_INT >= 33) {
+                add(Manifest.permission.READ_MEDIA_IMAGES)
+                add(Manifest.permission.READ_MEDIA_VIDEO)
+                add(Manifest.permission.READ_MEDIA_AUDIO)
+            } else {
+                add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needs.isNotEmpty()) reqPerms.launch(needs.toTypedArray())
     }
-    return true
-  }
 
-  private fun startScan() {
-    if (!ensureManageAllFilesIfNeeded()) return
+    private fun startScan() {
+        scanJob?.cancel()
+        progress.visibility = View.VISIBLE
+        progress.progress = 0
 
-    b.btnScan.isEnabled = false
-    b.tvCount.text = "กำลังสแกน..."
-    selected.clear()
-
-    lifecycleScope.launch {
-      val items = when (val s = currScope) {
-        is ScanScope.PhoneFast -> Scanner.scanPhoneFast(this@MainActivity)
-        is ScanScope.Folder -> Scanner.scanTreeDeep(this@MainActivity, s.uri, s.label)
-        is ScanScope.PhoneDeep -> Scanner.scanWholeStorageDeep(this@MainActivity)
-      }
-
-      adapter.submitList(items)
-      selected.clear()
-      b.btnToggleAll.text = "เลือกทั้งหมด"
-      updateSelectedUi()
-      b.btnScan.isEnabled = true
+        scanJob = lifecycleScope.launch {
+            try {
+                val items = when (mode) {
+                    Mode.ALL_DEVICE -> FileScanner.quickScan(this@MainActivity) {
+                        progress.progress = it
+                    }
+                    Mode.TREE -> {
+                        val tree = pickedTree
+                        if (tree == null) {
+                            Toast.makeText(this@MainActivity, "ยังไม่เลือกโฟลเดอร์/OTG", Toast.LENGTH_SHORT).show()
+                            progress.visibility = View.GONE
+                            return@launch
+                        }
+                        if (!cbDeep.isChecked) {
+                            // แม้ไม่ติ๊ก Deep ก็ยังต้องเดินใน Tree แต่จะหยาบ (ปล่อย same)
+                        }
+                        FileScanner.deepScanTree(this@MainActivity, tree) {
+                            progress.progress = it
+                        }
+                    }
+                }
+                adapter.submitList(items)
+                tvSelected.text = "0 รายการ"
+                btnSelectAll.text = "เลือกทั้งหมด"
+            } catch (e: SecurityException) {
+                Toast.makeText(this@MainActivity, "สิทธิ์ไม่พอ กรุณาอนุญาตการเข้าถึงไฟล์", Toast.LENGTH_LONG).show()
+                // เปิดหน้า Permission (กรณีผู้ใช้ปิดถาวร)
+                val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                i.data = Uri.parse("package:$packageName")
+                startActivity(i)
+            } finally {
+                progress.visibility = View.GONE
+            }
+        }
     }
-  }
+
+    private fun getTreeLabel(uri: Uri): String {
+        val last = uri.lastPathSegment ?: return "โฟลเดอร์ที่เลือก"
+        return when {
+            last.contains("otg", true) || last.contains("usb", true) -> "OTG"
+            else -> "โฟลเดอร์ที่เลือก"
+        }
+    }
 }
