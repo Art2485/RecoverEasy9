@@ -1,8 +1,8 @@
 pluginManagement {
     repositories {
+        gradlePluginPortal()
         google()
         mavenCentral()
-        gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
@@ -12,5 +12,6 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "RecoverEasy9" // ชื่ออะไรก็ได้
+
+rootProject.name = "RecoverEasy9"
 include(":app")
