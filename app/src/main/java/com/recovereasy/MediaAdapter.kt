@@ -3,55 +3,75 @@ package com.recovereasy
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import coil.ImageLoader
-import coil.decode.VideoFrameDecoder
 import coil.load
-import com.recovereasy.databinding.ItemMediaBinding
+import coil.request.VideoFrameMillis
+import coil.size.Scale
 
 class MediaAdapter(
-  private val imageLoader: ImageLoader,
-  private val onToggle: (MediaItem) -> Unit,
-  private val isSelected: (MediaItem) -> Boolean
-) : ListAdapter<MediaItem, MediaAdapter.VH>(Diff) {
+    private val onSelectionChanged: (Int) -> Unit
+) : ListAdapter<MediaItem, MediaAdapter.VH>(DIFF) {
 
-  object Diff : DiffUtil.ItemCallback<MediaItem>() {
-    override fun areItemsTheSame(a: MediaItem, b: MediaItem) = a.uri == b.uri
-    override fun areContentsTheSame(a: MediaItem, b: MediaItem) = a == b
-  }
+    private val selected = linkedSetOf<MediaItem>()
+    fun toggleAll(selectAll: Boolean) {
+        selected.clear()
+        if (selectAll) selected.addAll(currentList)
+        notifyDataSetChanged()
+        onSelectionChanged(selected.size)
+    }
+    fun selectedCount() = selected.size
 
-  inner class VH(val b: ItemMediaBinding) : RecyclerView.ViewHolder(b.root)
-
-  override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-    val b = ItemMediaBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-    return VH(b)
-  }
-
-  override fun onBindViewHolder(holder: VH, position: Int) {
-    val item = getItem(position)
-    val b = holder.b
-
-    // icon overlay
-    b.icType.visibility = if (item.kind == MediaKind.VIDEO) View.VISIBLE else View.GONE
-
-    // preview
-    b.thumb.scaleType = ImageView.ScaleType.CENTER_CROP
-    b.thumb.load(item.uri, imageLoader) {
-      crossfade(true)
-      allowHardware(false)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val v = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_media, parent, false)
+        return VH(v)
     }
 
-    // selection overlay
-    b.selOverlay.visibility = if (isSelected(item)) View.VISIBLE else View.GONE
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        holder.bind(getItem(position), selected.contains(getItem(position)))
+    }
 
-    b.root.setOnClickListener { onToggle(item); notifyItemChanged(position) }
-  }
+    inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+        private val thumb: ImageView = v.findViewById(R.id.thumb)
+        private val name: TextView = v.findViewById(R.id.name)
+        private val check: CheckBox = v.findViewById(R.id.check)
+
+        fun bind(item: MediaItem, checked: Boolean) {
+            name.text = item.name
+            check.isChecked = checked
+
+            thumb.load(item.uri) {
+                crossfade(true)
+                scale(Scale.FILL)
+                // ถ้าเป็นวีดีโอ ให้ดึงเฟรมแรก
+                if (item.mime.startsWith("video")) {
+                    videoFrameMillis(VideoFrameMillis.DEFAULT)
+                }
+            }
+
+            itemView.setOnClickListener {
+                if (selected.remove(item).not()) selected.add(item)
+                notifyItemChanged(bindingAdapterPosition)
+                onSelectionChanged(selected.size)
+            }
+            check.setOnClickListener {
+                if (check.isChecked) selected.add(item) else selected.remove(item)
+                onSelectionChanged(selected.size)
+            }
+        }
+    }
+
+    companion object {
+        private val DIFF = object : DiffUtil.ItemCallback<MediaItem>() {
+            override fun areItemsTheSame(oldItem: MediaItem, newItem: MediaItem) =
+                oldItem.uri == newItem.uri
+            override fun areContentsTheSame(oldItem: MediaItem, newItem: MediaItem) =
+                oldItem == newItem
+        }
+    }
 }
-
-fun provideImageLoader(view: View): ImageLoader =
-  ImageLoader.Builder(view.context)
-    .components { add(VideoFrameDecoder.Factory()) }
-    .build()
