@@ -10,13 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
@@ -45,9 +47,7 @@ jobs:
 
       - name: Write local.properties (sdk.dir)
         shell: bash
-        run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          cat local.properties
+        run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
       - name: Bootstrap Gradle wrapper if missing/broken
         shell: bash
@@ -67,17 +67,27 @@ jobs:
           fi
           chmod +x ./gradlew
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: false
           gradle-home-cache-cleanup: true
 
-      - - name: Kill Gradle & clean
-  run: |
-    chmod +x ./gradlew
-    ./gradlew --stop || true
-    ./gradlew clean
+      - name: Kill Gradle & clean
+        shell: bash
+        run: |
+          ./gradlew --stop || true
+          ./gradlew clean
 
-- name: Build Debug APK (installable)
-  run: |
-    ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug
+      - name: Build Debug APK (installable)
+        shell: bash
+        run: |
+          ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
