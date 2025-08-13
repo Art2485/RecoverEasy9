@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.recovereasy"          // ให้ตรงกับ package ใน AndroidManifest.xml
+    namespace = "com.recovereasy"        // ต้องตรงกับ package ใน AndroidManifest.xml
     compileSdk = 34
 
     defaultConfig {
@@ -23,9 +23,7 @@ android {
                 "proguard-rules.pro"
             )
         }
-        debug {
-            isMinifyEnabled = false
-        }
+        debug { isMinifyEnabled = false }
     }
 
     compileOptions {
@@ -34,14 +32,13 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    // เปิดทั้ง ViewBinding และ Compose เพื่อกันโค้ดเก่า ๆ ที่ import Compose ค้างไว้
+    // เปิดทั้ง ViewBinding + Compose
     buildFeatures {
         viewBinding = true
         compose = true
     }
     composeOptions {
-        // แมตช์กับ Kotlin 1.9.24
-        kotlinCompilerExtensionVersion = "1.5.14"
+        kotlinCompilerExtensionVersion = "1.5.14"   // เข้าชุดกับ Kotlin 1.9.24
     }
 
     packaging {
@@ -50,6 +47,9 @@ android {
             "META-INF/DEPENDENCIES"
         )
     }
+
+    // จุดชี้สำคัญ: ใช้ซอร์สโฟลเดอร์สะอาดของเรา
+    sourceSets["main"].java.setSrcDirs(listOf("src/main/appsrc"))
 }
 
 dependencies {
@@ -62,11 +62,10 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
 
-    // ---- Compose (กัน error Unresolved reference: Text/Row/Column/Modifier/dp) ----
+    // Compose (กัน error Text/Row/Modifier/dp)
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
-
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
@@ -74,7 +73,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // โหลดพรีวิวรูป/วิดีโอ (ทั้ง View และ Compose)
+    // โหลดพรีวิวรูป/วิดีโอ
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-video:2.6.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
