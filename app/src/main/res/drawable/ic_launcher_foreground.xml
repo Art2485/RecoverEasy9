@@ -1,5 +1,17 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF" android:pathData="M16,16h76v76h-76z"/>
-    <path android:fillColor="#6750A4" android:pathData="M32,54h44v8h-44zM32,70h36v8h-36z"/>
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- พื้นวงกลมสีขาว -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,6a48,48 0,1 1,0 96a48,48 0,1 1,0 -96z" />
+
+    <!-- ตัว R สีม่วง (โลโก้เรียบ ๆ) -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M38,78 L38,30 L56,30 C64,30 70,36 70,44 C70,50 66,56 60,58 L72,78 L62,78 L52,60 L48,60 L48,78 Z
+                          M48,50 L56,50 C60,50 62,47 62,44 C62,41 60,38 56,38 L48,38 Z"/>
 </vector>
