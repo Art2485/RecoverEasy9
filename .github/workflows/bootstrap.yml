@@ -10,14 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: ${{ github.workspace }}/android-sdk
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -47,7 +47,9 @@ jobs:
 
       - name: Write local.properties (sdk.dir)
         shell: bash
-        run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          cat local.properties
 
       - name: Bootstrap Gradle wrapper if missing/broken
         shell: bash
@@ -79,15 +81,19 @@ jobs:
           ./gradlew --stop || true
           ./gradlew clean
 
+      - name: Diagnose duplicate classes (dependency tree)
+        shell: bash
+        run: |
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath
+
       - name: Build Debug APK (installable)
         shell: bash
         run: |
           ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug
 
       - name: Upload APK
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
