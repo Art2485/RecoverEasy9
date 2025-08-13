@@ -1,7 +1,5 @@
 <resources>
     <color name="ic_launcher_background">#A2A2A2</color>
-
-    <!-- สีอื่น ๆ ของแอป (ปรับได้ตามที่ใช้จริง) -->
     <color name="primary">#6750A4</color>
     <color name="onPrimary">#FFFFFF</color>
     <color name="background">#FFFFFF</color>
