@@ -1,10 +1,10 @@
 plugins {
     id("com.android.application")
-    kotlin("android")
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
-    namespace = "com.recovereasy"      // ให้ตรงกับ package ใน AndroidManifest.xml
+    namespace = "com.recovereasy"          // ให้ตรงกับ package ใน AndroidManifest.xml
     compileSdk = 34
 
     defaultConfig {
@@ -32,17 +32,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
-    // เปิดใช้ทั้ง ViewBinding + Compose (เพื่อให้โค้ดเดิมที่ใช้ Compose คอมไพล์ผ่าน)
+    // เปิดทั้ง ViewBinding และ Compose เพื่อกันโค้ดเก่า ๆ ที่ import Compose ค้างไว้
     buildFeatures {
         viewBinding = true
         compose = true
     }
     composeOptions {
-        // เวอร์ชัน compiler ของ Compose ที่เข้าคู่กับ Kotlin 1.9.24
+        // แมตช์กับ Kotlin 1.9.24
         kotlinCompilerExtensionVersion = "1.5.14"
     }
 
@@ -64,7 +62,7 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
 
-    // ---- Compose (เผื่อมีโค้ด Compose เดิม ๆ: Text/Row/Column/Modifier/dp ฯลฯ) ----
+    // ---- Compose (กัน error Unresolved reference: Text/Row/Column/Modifier/dp) ----
     val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -76,7 +74,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // พรีวิวรูป/วิดีโอ (ทั้ง View และ Compose)
+    // โหลดพรีวิวรูป/วิดีโอ (ทั้ง View และ Compose)
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-video:2.6.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
