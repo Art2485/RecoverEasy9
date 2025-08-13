@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import coil.request.VideoFrameMillis
 import coil.size.Scale
+import android.Manifest
 
 class MediaAdapter(
     private val onSelectionChanged: (Int) -> Unit
