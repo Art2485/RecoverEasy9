@@ -22,46 +22,60 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # ติดตั้ง Android SDK แบบทางการ ครบทั้ง cmdline-tools + licenses
+      # ติดตั้ง Android SDK แบบทางการ
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # เขียน local.properties ให้ Gradle มอง SDK เจอแน่นอน
+      # ให้ Gradle เห็นตำแหน่ง SDK แน่นอน
       - name: Write local.properties (sdk.dir)
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      # เปิดแคช Gradle ให้ build เร็วขึ้น และไม่เช็ค wrapper เข้มเกินไป
+      # ถ้า wrapper หาย/ไฟล์เสีย (เช่นมี "404") ให้บูตสแตร็พใหม่อัตโนมัติ
+      - name: Bootstrap Gradle wrapper if missing/broken
+        shell: bash
+        run: |
+          set -e
+          need=0
+          # ไม่มีไฟล์ gradlew
+          [ ! -f ./gradlew ] && need=1
+          # มีไฟล์แต่บรรทัดแรกไม่ใช่ shebang (ของจริงต้องขึ้นต้นด้วย #!)
+          if [ -f ./gradlew ] && ! head -1 ./gradlew | grep -q '^#!'; then
+            need=1
+          fi
+          if [ "$need" -eq 1 ]; then
+            echo "Bootstrapping Gradle wrapper..."
+            ver=8.9
+            curl -sLo /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${ver}-bin.zip"
+            unzip -q /tmp/gradle.zip -d /tmp/gradle
+            /tmp/gradle/gradle-${ver}/bin/gradle wrapper --gradle-version ${ver}
+          fi
+          chmod +x ./gradlew
+
+      # เปิดแคช Gradle ให้ build เสถียรขึ้น
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: false
           gradle-home-cache-cleanup: true
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
       - name: Kill Gradle & clean
         run: |
           ./gradlew --stop || true
           ./gradlew clean
 
-      # สั่ง build + เก็บ log แบบละเอียด
       - name: Build Debug APK (installable)
-        id: build
         run: |
           set -o pipefail
           ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug | tee buildlog.txt
 
-      # อัปโหลด log เสมอ เพื่อดู error ต้นเหตุได้ชัด
-      - name: Upload build log
+      - name: Upload build log (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: buildlog
           path: buildlog.txt
 
-      # อัปโหลด APK เมื่อ build ผ่าน
-      - name: Upload APK
+      - name: Upload APK (on success)
         if: success()
         uses: actions/upload-artifact@v4
         with:
