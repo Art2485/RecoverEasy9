@@ -1,23 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest package="com.recovereasy"
-    xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- Android 13+ แยก permission ตามชนิดสื่อ -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-
-    <!-- เผื่อเครื่องต่ำกว่า Tiramisu -->
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.recovereasy">
     <application
         android:allowBackup="true"
         android:label="RecoverEasy"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@style/Theme.RecoverEasy">
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
         <activity
             android:name=".MainActivity"
             android:exported="true">
