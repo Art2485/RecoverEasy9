@@ -52,21 +52,24 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat local.properties
 
-      - name: Bootstrap/validate Gradle wrapper
+      # ✅ ไม่ใช้ sdkman แล้ว — ดาวน์โหลด Gradle zip มากางแล้วสั่ง wrapper โดยตรง
+      - name: Bootstrap Gradle wrapper if missing/broken
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           need=0
           [ ! -f ./gradlew ] && need=1
           if [ -f ./gradlew ] && ! head -1 ./gradlew | grep -q '^#!'; then
             need=1
           fi
           if [ "$need" -eq 1 ]; then
-            echo "Regenerating Gradle wrapper…"
-            curl -s "https://get.sdkman.io" | bash
-            source "$HOME/.sdkman/bin/sdkman-init.sh"
-            sdk install gradle 8.9 >/dev/null
-            gradle wrapper --gradle-version 8.9
+            echo "Downloading Gradle 8.9 to generate wrapper..."
+            GRADLE_VER=8.9
+            TMP="$RUNNER_TEMP/gradle"
+            mkdir -p "$TMP"
+            curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip" -o "$TMP/gradle.zip"
+            unzip -q "$TMP/gradle.zip" -d "$TMP"
+            "$TMP/gradle-${GRADLE_VER}/bin/gradle" wrapper --gradle-version ${GRADLE_VER}
           fi
           chmod +x ./gradlew
 
