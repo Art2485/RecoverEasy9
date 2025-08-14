@@ -57,18 +57,36 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ปุ่ม “ทั้งเครื่อง (เร็ว)”
+        
         binding.btnAll.setOnClickListener {
-            // สแกน storage ที่เมานท์ทั้งหมดผ่าน MediaStore + SAF (อย่างง่ายเริ่มที่ primary)
-            val tree = DocumentsContract.buildTreeDocumentUri(
-                "com.android.externalstorage.documents",
-                "primary:"
-            )
-            scanUriRoot(tree)
+            // สแกนทุก volume (primary + sdcard + usb ที่เมานท์) ผ่าน SAF
+            val sm = getSystemService(android.os.storage.StorageManager::class.java)
+            val volumes = sm?.storageVolumes ?: emptyList()
+            val uris = mutableListOf<android.net.Uri>()
+            volumes.forEach { vol ->
+                val id = try { vol.uuid ?: "primary" } catch (_: Throwable) { "primary" }
+                val docId = if (id == "primary") "primary:" else "$id:"
+                uris += android.provider.DocumentsContract.buildTreeDocumentUri(
+                    "com.android.externalstorage.documents",
+                    docId
+                )
+            }
+            // ถ้าไม่เจอใด ๆ ให้ fallback เป็น primary
+            if (uris.isEmpty()) {
+                uris += android.provider.DocumentsContract.buildTreeDocumentUri(
+                    "com.android.externalstorage.documents","primary:"
+                )
+            }
+            // รวมผลทุกตัว
+            clearResults()
+            uris.forEach { scanUriRoot(it) }
         }
+        
 
         // ปุ่ม “OTG / การ์ด”
         binding.btnOtg.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
                 addFlags(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
                             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
@@ -83,6 +101,7 @@ class MainActivity : AppCompatActivity() {
         // ปุ่ม “เลือกโฟลเดอร์”
         binding.btnPickFolder.setOnClickListener {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
                 addFlags(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
                             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
@@ -145,6 +164,12 @@ class MainActivity : AppCompatActivity() {
         binding.progress.visibility = View.GONE
         adapter.submitList(results)
         binding.empty.visibility = if (results.isEmpty()) View.VISIBLE else View.GONE
+        updateSelectedCount()
+    }
+
+    
+    private fun clearResults() {
+        adapter.submitList(emptyList())
         updateSelectedCount()
     }
 
