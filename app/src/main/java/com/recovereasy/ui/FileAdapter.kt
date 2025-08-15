@@ -14,6 +14,7 @@ import coil.size.Scale
 import coil.request.videoFrameMillis
 import com.recovereasy.MediaItem
 import com.recovereasy.R
+import kotlin.math.log10
 
 class FileAdapter :
     ListAdapter<MediaItem, FileAdapter.VH>(diff) {
@@ -56,7 +57,7 @@ class FileAdapter :
             name.text = item.name
             meta.text = "${readableSize(item.size)} • ${item.mime.ifBlank { "unknown" }}"
 
-            // ห้ามแก้ currentList ตรง ๆ — ต้องสร้างลิสต์ใหม่แล้ว submitList
+            // อย่าแก้ currentList ตรง ๆ — ต้อง submitList ใหม่
             check.setOnCheckedChangeListener(null)
             check.isChecked = item.checked
             check.setOnCheckedChangeListener { _, isChecked ->
@@ -68,22 +69,26 @@ class FileAdapter :
                 }
             }
 
-            // โหลดภาพ/เฟรมวิดีโอด้วย Coil (ต้องมี dependency: coil + coil-video)
+            // พรีวิวรูป/วิดีโอด้วย Coil (ต้องมี coil + coil-video)
             thumb.load(item.uri) {
                 crossfade(true)
                 scale(Scale.FILL)
                 if (item.mime.startsWith("video/")) {
-                    videoFrameMillis(0) // ดึงเฟรมแรกของวิดีโอมาเป็นพรีวิว
+                    videoFrameMillis(0) // เฟรมแรกของวิดีโอ
                 }
             }
         }
 
+        /** หลีกเลี่ยง pow() → ใช้วิธีหาร 1024 ทีละขั้น เพื่อเลี่ยง Unresolved reference: pow */
         private fun readableSize(bytes: Long): String {
-            if (bytes <= 0) return "0 B"
-            val u = arrayOf("B", "KB", "MB", "GB", "TB")
-            val grp = (kotlin.math.log10(bytes.toDouble()) / kotlin.math.log10(1024.0)).toInt()
-            val value = bytes / kotlin.math.pow(1024.0, grp.toDouble())
-            return String.format("%.1f %s", value, u[grp])
+            var size = if (bytes < 0L) 0.0 else bytes.toDouble()
+            val units = arrayOf("B","KB","MB","GB","TB","PB")
+            var i = 0
+            while (size >= 1024 && i < units.lastIndex) {
+                size /= 1024.0
+                i++
+            }
+            return String.format("%.1f %s", size, units[i])
         }
     }
 }
