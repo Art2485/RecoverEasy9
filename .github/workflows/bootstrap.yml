@@ -23,6 +23,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # ---- Android SDK -------------------------------------------------------
       - name: Install Android SDK tools
         shell: bash
         run: |
@@ -31,13 +32,11 @@ jobs:
           curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME"
 
-          # จัดวางเป็น .../cmdline-tools/latest ให้ถูกต้อง
+          # ทำให้ path เป็น .../cmdline-tools/latest เสมอ (รองรับรูป zip ทั้ง 2 แบบ)
           if [ -d "$ANDROID_HOME/cmdline-tools/cmdline-tools" ]; then
-            # บางครั้ง zip แตกเป็น android-sdk/cmdline-tools/cmdline-tools/*
             rm -rf "$ANDROID_HOME/cmdline-tools/latest"
             mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
           else
-            # ส่วนมาก zip แตกเป็น android-sdk/cmdline-tools/*
             mv "$ANDROID_HOME/cmdline-tools" "$ANDROID_HOME/cmdline-tools-tmp"
             mkdir -p "$ANDROID_HOME/cmdline-tools"
             mv "$ANDROID_HOME/cmdline-tools-tmp" "$ANDROID_HOME/cmdline-tools/latest"
@@ -60,19 +59,31 @@ jobs:
       - name: Write local.properties
         run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      # ---- FIX: รีเจน Gradle Wrapper จากทางการทุกครั้ง ---------------------
+      - name: Self-heal Gradle wrapper (official 8.9)
+        shell: bash
+        run: |
+          set -e
+          curl -sLo /tmp/gradle-8.9-bin.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q /tmp/gradle-8.9-bin.zip -d /tmp
+          /tmp/gradle-8.9/bin/gradle -g "$HOME/.gradle" wrapper --gradle-version 8.9 --distribution-type bin
+          chmod +x ./gradlew
+          ./gradlew -v
 
+      # ---- Gradle setup/cache ------------------------------------------------
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
         with:
+          # ผ่าน validation เพราะเราเพิ่งรีเจน wrapper จากทางการ
           validate-wrappers: true
           gradle-home-cache-cleanup: true
 
+      # ---- Build -------------------------------------------------------------
       - name: Build Debug APK (robust)
         run: |
           ./gradlew --no-daemon --stacktrace --warning-mode=all --console=plain clean :app:assembleDebug
 
+      # ---- Logs --------------------------------------------------------------
       - name: Upload build log (always)
         if: always()
         uses: actions/upload-artifact@v4
