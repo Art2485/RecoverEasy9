@@ -1,20 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
-
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.recovereasy">
 
     <application
         android:allowBackup="true"
-        android:label="@string/app_name"
+        android:label="RecoverEasy9"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar">
-
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -22,12 +16,8 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"/>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED"/>
-            </intent-filter>
         </activity>
-
     </application>
+
+    <!-- สำหรับอุปกรณ์/การ์ด OTG ใช้ SAF อยู่แล้ว ไม่ต้องขอสิทธิ์เพิ่ม -->
 </manifest>
