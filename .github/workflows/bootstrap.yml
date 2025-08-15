@@ -49,30 +49,39 @@ jobs:
         shell: bash
         run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-      - name: Ensure Gradle wrapper
+      # (ไม่บังคับมี wrapper) — แค่ทำให้พร้อมถ้ามีโปรเจ็กต์ Gradle
+      - name: Ensure Gradle wrapper if possible
         shell: bash
         run: |
           set -euxo pipefail
           if [ ! -x ./gradlew ]; then
+            # ลองสร้าง wrapper ถ้าโปรเจ็กต์รองรับ
             curl -s "https://get.sdkman.io" | bash
             source "$HOME/.sdkman/bin/sdkman-init.sh"
             sdk install gradle 8.9 >/dev/null
-            gradle wrapper --gradle-version 8.9
+            if [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then
+              gradle wrapper --gradle-version 8.9 || true
+            fi
           fi
-          chmod +x ./gradlew
+          [ -f ./gradlew ] && chmod +x ./gradlew || true
 
-      - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          validate-wrappers: false
-          gradle-home-cache-cleanup: true
-
-      - name: Build Debug APK (installable)
+      - name: Build Debug APK (with fallback)
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
-          code=${PIPESTATUS[0]}
+          echo "Using wrapper?"; ls -l ./gradlew || true
+          if [ -x ./gradlew ]; then
+            ./gradlew --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
+            code=${PIPESTATUS[0]}
+          else
+            echo "Wrapper not found — using SDKMAN Gradle fallback"
+            curl -s "https://get.sdkman.io" | bash
+            source "$HOME/.sdkman/bin/sdkman-init.sh"
+            sdk install gradle 8.9 >/dev/null
+            gradle --version
+            gradle --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
+            code=${PIPESTATUS[0]}
+          fi
           echo "Gradle exit code: $code"
           exit $code
 
