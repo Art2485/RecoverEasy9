@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          # ตรวจ wrapper ว่าใช้งานได้จริงไหม (ต้องมี และบรรทัดแรกต้องเป็น shebang #!)
+          # ตรวจ wrapper ว่าพร้อมจริงไหม (#1 บรรทัดแรกต้องเป็น shebang)
           WRAP_OK=1
           if [ ! -f ./gradlew ]; then WRAP_OK=0; fi
           if [ -f ./gradlew ]; then head -n1 ./gradlew | grep -q '^#!' || WRAP_OK=0; fi
@@ -62,12 +62,12 @@ jobs:
             ./gradlew --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
             CODE=${PIPESTATUS[0]}
           else
-            echo "Wrapper missing/invalid — using Gradle fallback via SDKMAN"
+            echo "Wrapper missing/invalid — using Gradle via SDKMAN"
             curl -s "https://get.sdkman.io" | bash
             source "$HOME/.sdkman/bin/sdkman-init.sh"
             sdk install gradle 8.9 >/dev/null
             gradle --version
-            # ลอง generate wrapper (ถ้าโปรเจ็กต์รองรับ) แล้วใช้ wrapper ก่อน
+            # generate wrapper (ถ้าโปรเจกต์รองรับ)
             if [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then
               gradle wrapper --gradle-version 8.9 || true
             fi
@@ -93,8 +93,7 @@ jobs:
       - name: Upload build log (always)
         if: ${{ always() }}
         run: |
-          # ถ้าไม่เกิด build.log ให้สร้างไฟล์บอกเหตุผลเพื่อกัน error "No files found"
-          [ -f build.log ] || echo "build.log not created — build step might have failed before logging" > build.log
+          [ -f build.log ] || echo "build.log not created — build step failed before logging" > build.log
         shell: bash
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
