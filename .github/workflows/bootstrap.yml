@@ -26,7 +26,6 @@ jobs:
       - name: Install Android SDK cmdline-tools
         shell: bash
         run: |
-          set -euxo pipefail
           mkdir -p "${ANDROID_HOME}"
           curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_HOME}/cmdline-tools"
@@ -37,7 +36,6 @@ jobs:
       - name: Accept licenses & install SDK packages
         shell: bash
         run: |
-          set -euxo pipefail
           SDKM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --sdk_root="${ANDROID_HOME}" --licenses >/dev/null || true
           "$SDKM" --sdk_root="${ANDROID_HOME}" \
@@ -49,43 +47,41 @@ jobs:
         shell: bash
         run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-      # ตรวจสุขภาพ Gradle wrapper และซ่อมอัตโนมัติถ้าเสีย/เป็น 404
-      - name: Repair Gradle wrapper if corrupted
+      - name: Build Debug APK (robust fallback)
         shell: bash
         run: |
-          set -euxo pipefail
-          CORRUPT=0
-          if [ -f ./gradlew ]; then
-            # ต้องขึ้นต้นด้วย shebang (#!) ไม่ใช่ "404 ..."
-            head -n1 ./gradlew | grep -q '^#!' || CORRUPT=1
-          else
-            CORRUPT=1
-          fi
-          # properties ต้องมี distributionUrl
-          if [ ! -f gradle/wrapper/gradle-wrapper.properties ] || ! grep -q 'distributionUrl' gradle/wrapper/gradle-wrapper.properties; then
-            CORRUPT=1
-          fi
+          set -o pipefail
+          # ตรวจ wrapper ว่าใช้งานได้จริงไหม (ต้องมี และบรรทัดแรกต้องเป็น shebang #!)
+          WRAP_OK=1
+          if [ ! -f ./gradlew ]; then WRAP_OK=0; fi
+          if [ -f ./gradlew ]; then head -n1 ./gradlew | grep -q '^#!' || WRAP_OK=0; fi
+          [ -f ./gradlew ] && chmod +x ./gradlew || true
 
-          if [ "$CORRUPT" -eq 1 ]; then
-            echo "Wrapper is missing/corrupted — rebuilding..."
-            rm -rf gradle gradlew gradlew.bat || true
+          if [ "$WRAP_OK" -eq 1 ]; then
+            echo "Using Gradle wrapper"
+            ./gradlew --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
+            CODE=${PIPESTATUS[0]}
+          else
+            echo "Wrapper missing/invalid — using Gradle fallback via SDKMAN"
             curl -s "https://get.sdkman.io" | bash
             source "$HOME/.sdkman/bin/sdkman-init.sh"
             sdk install gradle 8.9 >/dev/null
             gradle --version
-            gradle wrapper --gradle-version 8.9
+            # ลอง generate wrapper (ถ้าโปรเจ็กต์รองรับ) แล้วใช้ wrapper ก่อน
+            if [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then
+              gradle wrapper --gradle-version 8.9 || true
+            fi
+            if [ -x ./gradlew ] && head -n1 ./gradlew | grep -q '^#!'; then
+              chmod +x ./gradlew
+              ./gradlew --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
+              CODE=${PIPESTATUS[0]}
+            else
+              gradle --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
+              CODE=${PIPESTATUS[0]}
+            fi
           fi
-          chmod +x ./gradlew
-          head -n1 ./gradlew || true
-
-      - name: Build Debug APK
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew --no-daemon -Dorg.gradle.console=plain --warning-mode=all --stacktrace --info clean :app:assembleDebug 2>&1 | tee build.log
-          code=${PIPESTATUS[0]}
-          echo "Gradle exit code: $code"
-          exit $code
+          echo "Gradle exit code: $CODE"
+          exit $CODE
 
       - name: Upload APK (if exists)
         if: success()
@@ -96,7 +92,12 @@ jobs:
 
       - name: Upload build log (always)
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        run: |
+          # ถ้าไม่เกิด build.log ให้สร้างไฟล์บอกเหตุผลเพื่อกัน error "No files found"
+          [ -f build.log ] || echo "build.log not created — build step might have failed before logging" > build.log
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: build-log
           path: build.log
