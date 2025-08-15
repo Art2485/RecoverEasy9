@@ -16,38 +16,29 @@ android {
     }
 
     buildTypes {
-        getByName("release") {
+        release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
-        getByName("debug") {
+        debug {
             isMinifyEnabled = false
         }
     }
 
-    buildFeatures {
-        viewBinding = true
-    }
+    buildFeatures { viewBinding = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
-    packaging {
-        resources.excludes += setOf(
-            "META-INF/DEPENDENCIES",
-            "META-INF/LICENSE", "META-INF/LICENSE.txt", "META-INF/license.txt",
-            "META-INF/NOTICE", "META-INF/NOTICE.txt", "META-INF/notice.txt",
-            "META-INF/ASL2.0"
-        )
-    }
+    packaging { resources.excludes += setOf(
+        "META-INF/DEPENDENCIES",
+        "META-INF/LICENSE","META-INF/LICENSE.txt","META-INF/license.txt",
+        "META-INF/NOTICE","META-INF/NOTICE.txt","META-INF/notice.txt",
+        "META-INF/ASL2.0"
+    ) }
 }
 
 dependencies {
@@ -59,11 +50,11 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
 
-    // โหลดพรีวิวรูป/วิดีโอ
+    // พรีวิวรูป/วิดีโอ
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-video:2.6.0")
 
-    // SAF + ซ่อม EXIF เบื้องต้น
+    // SAF + EXIF
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 }
