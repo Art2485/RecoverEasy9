@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- รองรับ USB Host/OTG (ไม่บังคับว่าต้องมี) -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
 
-    <!-- สิทธิ์อ่านมีเดียบน Android 13+ และสำรองให้ <13 -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
@@ -25,7 +23,6 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- แจ้งตอนเสียบ/ถอด USB (ไว้ future ใช้ trigger สแกน) -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"/>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED"/>
