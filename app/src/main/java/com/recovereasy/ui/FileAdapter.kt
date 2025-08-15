@@ -6,78 +6,84 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import coil.size.Scale
+import coil.request.videoFrameMillis
+import com.recovereasy.MediaItem
 import com.recovereasy.R
-import com.recovereasy.storage.ScannedItem
-import java.text.DecimalFormat
 
-class FileAdapter(
-    private val onToggle: (ScannedItem, Boolean) -> Unit
-) : RecyclerView.Adapter<FileAdapter.VH>() {
+class FileAdapter :
+    ListAdapter<MediaItem, FileAdapter.VH>(diff) {
 
-    private val items = ArrayList<ScannedItem>()
-    private val checked = HashSet<UriKey>()
-
-    data class UriKey(val s: String)
-
-    fun submit(newItems: List<ScannedItem>) {
-        items.clear()
-        items.addAll(newItems)
-        checked.clear()
-        notifyDataSetChanged()
+    companion object {
+        private val diff = object : DiffUtil.ItemCallback<MediaItem>() {
+            override fun areItemsTheSame(oldItem: MediaItem, newItem: MediaItem) =
+                oldItem.uri == newItem.uri
+            override fun areContentsTheSame(oldItem: MediaItem, newItem: MediaItem) =
+                oldItem == newItem
+        }
     }
 
-    fun setAllChecked(all: Boolean) {
-        checked.clear()
-        if (all) items.forEach { checked.add(UriKey(it.uri.toString())) }
-        notifyDataSetChanged()
+    fun selectedCount(): Int = currentList.count { it.checked }
+
+    /** กดครั้งแรกเลือกทั้งหมด, กดซ้ำยกเลิกทั้งหมด */
+    fun toggleAll() {
+        val allSelected = currentList.all { it.checked }
+        val updated = currentList.map { it.copy(checked = !allSelected) }
+        submitList(updated)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val v = LayoutInflater.from(parent.context).inflate(R.layout.item_file, parent, false)
+        val v = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_media, parent, false)
         return VH(v)
     }
 
-    override fun onBindViewHolder(h: VH, position: Int) {
-        val it = items[position]
-        h.name.text = it.name
-        h.meta.text = "${pretty(it.size)} • ${it.mime ?: "-"}"
-        h.check.setOnCheckedChangeListener(null)
-        h.check.isChecked = checked.contains(UriKey(it.uri.toString()))
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        holder.bind(getItem(position))
+    }
 
-        // พรีวิว: รูป/วิดีโอ ได้เฟรมแรก
-        h.thumb.load(it.uri) {
-            if (it.isVideo) {
-                videoFrameMillis(0)
+    inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+        private val thumb: ImageView = v.findViewById(R.id.thumb)
+        private val name: TextView  = v.findViewById(R.id.name)
+        private val meta: TextView  = v.findViewById(R.id.meta)
+        private val check: CheckBox = v.findViewById(R.id.check)
+
+        fun bind(item: MediaItem) {
+            name.text = item.name
+            meta.text = "${readableSize(item.size)} • ${item.mime.ifBlank { "unknown" }}"
+
+            // ห้ามแก้ currentList ตรง ๆ — ต้องสร้างลิสต์ใหม่แล้ว submitList
+            check.setOnCheckedChangeListener(null)
+            check.isChecked = item.checked
+            check.setOnCheckedChangeListener { _, isChecked ->
+                val pos = bindingAdapterPosition
+                if (pos != RecyclerView.NO_POSITION) {
+                    val updated = currentList.toMutableList()
+                    updated[pos] = item.copy(checked = isChecked)
+                    submitList(updated)
+                }
+            }
+
+            // โหลดภาพ/เฟรมวิดีโอด้วย Coil (ต้องมี dependency: coil + coil-video)
+            thumb.load(item.uri) {
+                crossfade(true)
+                scale(Scale.FILL)
+                if (item.mime.startsWith("video/")) {
+                    videoFrameMillis(0) // ดึงเฟรมแรกของวิดีโอมาเป็นพรีวิว
+                }
             }
         }
 
-        h.itemView.setOnClickListener {
-            val now = !h.check.isChecked
-            h.check.isChecked = now
+        private fun readableSize(bytes: Long): String {
+            if (bytes <= 0) return "0 B"
+            val u = arrayOf("B", "KB", "MB", "GB", "TB")
+            val grp = (kotlin.math.log10(bytes.toDouble()) / kotlin.math.log10(1024.0)).toInt()
+            val value = bytes / kotlin.math.pow(1024.0, grp.toDouble())
+            return String.format("%.1f %s", value, u[grp])
         }
-        h.check.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) checked.add(UriKey(it.uri.toString()))
-            else checked.remove(UriKey(it.uri.toString()))
-            onToggle(it, isChecked)
-        }
-    }
-
-    override fun getItemCount(): Int = items.size
-
-    class VH(v: View) : RecyclerView.ViewHolder(v) {
-        val thumb: ImageView = v.findViewById(R.id.thumb)
-        val name: TextView = v.findViewById(R.id.name)
-        val meta: TextView = v.findViewById(R.id.meta)
-        val check: CheckBox = v.findViewById(R.id.check)
-    }
-
-    private fun pretty(bytes: Long): String {
-        if (bytes < 0) return "-"
-        if (bytes < 1024) return "$bytes B"
-        val z = (63 - java.lang.Long.numberOfLeadingZeros(bytes)) / 10
-        val df = DecimalFormat("#,##0.#")
-        return df.format(bytes / Math.pow(1024.0, z.toDouble())) + " " + " KMGTPE"[z] + "B"
     }
 }
