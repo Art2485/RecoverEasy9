@@ -6,6 +6,7 @@ import androidx.documentfile.provider.DocumentFile
 
 object Scanner {
 
+    /** สแกนจากโฟลเดอร์/DocumentTree ที่ผู้ใช้เลือก (รองรับโฟลเดอร์ในเครื่อง/OTG/SD ผ่าน SAF) */
     fun scanDocumentTree(ctx: Context, root: DocumentFile?, deep: Boolean = true): List<MediaItem> {
         if (root == null || !root.exists()) return emptyList()
         val out = ArrayList<MediaItem>(256)
@@ -19,30 +20,20 @@ object Scanner {
                 if (deep) walk(f, out, deep)
             } else {
                 val name = f.name ?: "(unknown)"
-                val mime = f.type
-                val kind = mimeToKind(mime)
-                // isTrashed: ใช้ false เป็นค่าพื้นฐาน
+                val mime = f.type ?: guessMimeFromName(name) ?: ""
+                val size = try { f.length() } catch (_: Throwable) { 0L }
                 out += MediaItem(
                     uri = f.uri,
                     name = name,
+                    size = size,
                     mime = mime,
-                    kind = kind,
-                    isTrashed = false,
                     checked = false
                 )
             }
         }
     }
 
-    fun mimeToKind(mime: String?): MediaKind = when {
-        mime == null -> MediaKind.OTHER
-        mime.startsWith("image/") -> MediaKind.IMAGE
-        mime.startsWith("video/") -> MediaKind.VIDEO
-        mime.startsWith("audio/") -> MediaKind.AUDIO
-        else -> MediaKind.OTHER
-    }
-
-    fun guessMimeFromName(name: String): String? {
+    private fun guessMimeFromName(name: String): String? {
         val ext = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
         return if (ext.isEmpty()) null else MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
     }
