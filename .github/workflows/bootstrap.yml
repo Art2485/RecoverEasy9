@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Android SDK cmdline-tools
         run: |
-          set -euxo pipefail
+          set -e
           mkdir -p "$ANDROID_HOME"
           curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
@@ -37,7 +37,7 @@ jobs:
 
       - name: Accept licenses & install SDK packages
         run: |
-          set -euxo pipefail
+          set -e
           sdkmanager --sdk_root="${ANDROID_HOME}" --licenses <<<"y"
           sdkmanager --sdk_root="${ANDROID_HOME}" \
             "platform-tools" \
@@ -47,25 +47,42 @@ jobs:
       - name: Write local.properties
         run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-      - name: Make gradlew executable
+      # ✅ ซ่อม/สร้าง Gradle wrapper อัตโนมัติถ้าพังหรือไม่มี
+      - name: Recreate Gradle wrapper if missing/broken
+        shell: bash
         run: |
-          set -euxo pipefail
-          test -x ./gradlew || chmod +x ./gradlew
+          set -e
+          NEED=0
+          # ไม่มีไฟล์ หรือลายเซ็นบรรทัดแรกไม่ใช่ shebang ของ gradle wrapper
+          if [ ! -f ./gradlew ]; then NEED=1; fi
+          if [ -f ./gradlew ] && ! head -n1 ./gradlew | grep -qE '^#!.*/(env )?sh'; then NEED=1; fi
+          # jar ของ wrapper หายก็ถือว่าพัง
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then NEED=1; fi
 
-      # ❗ ให้ล้มเหลวจริงถ้า build ไม่ผ่าน (ไม่มี || true อีกต่อไป)
+          if [ "$NEED" -eq 1 ]; then
+            echo "Gradle wrapper missing/broken -> creating fresh wrapper (8.9)…"
+            # ติดตั้ง Gradle แบบชั่วคราวด้วย SDKMAN (ไม่ใช้ -u เพื่อเลี่ยง unbound variable)
+            curl -s https://get.sdkman.io | bash >/dev/null
+            source "$HOME/.sdkman/bin/sdkman-init.sh"
+            sdk install gradle 8.9 >/dev/null
+            gradle wrapper --gradle-version 8.9 --distribution-type all
+          fi
+
+          chmod +x ./gradlew
+
+      # (เลือกได้) ตรวจ wrapper ให้ชัวร์
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v3
+
       - name: Build Debug APK
         run: |
-          set -euxo pipefail
+          set -e
           ./gradlew --warning-mode=all --stacktrace clean :app:assembleDebug
 
       - name: List APK outputs
-        id: list_apk
         run: |
           shopt -s globstar nullglob
-          mapfile -t apks < <(printf "%s\n" **/build/outputs/apk/**/*.apk)
-          echo "Found ${#apks[@]} APK(s):"
-          printf '%s\n' "${apks[@]}"
-          printf '%s\n' "${apks[@]}" > apk-list.txt
+          printf "%s\n" **/build/outputs/apk/**/*.apk | tee apk-list.txt
 
       - name: Upload APK(s)
         uses: actions/upload-artifact@v4
