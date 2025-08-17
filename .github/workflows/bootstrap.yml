@@ -1,84 +1,78 @@
 name: Android CI — Build installable APK
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       ANDROID_HOME: ${{ github.workspace }}/android-sdk
       JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
+      GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Install Android SDK tools
-        shell: bash
+      - name: Install Android SDK cmdline-tools
         run: |
-          set -e
+          set -euxo pipefail
           mkdir -p "$ANDROID_HOME"
           curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME"/cmdline-tools
+          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
           mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
       - name: Accept licenses & install SDK packages
-        shell: bash
         run: |
-          set -e
-          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-          "$SDKM" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          set -euxo pipefail
+          sdkmanager --sdk_root="${ANDROID_HOME}" --licenses <<<"y"
+          sdkmanager --sdk_root="${ANDROID_HOME}" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
-      - name: Write local.properties (sdk.dir)
-        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+      - name: Write local.properties
+        run: echo "sdk.dir=${ANDROID_HOME}" > local.properties
 
-      - name: Bootstrap Gradle wrapper if missing/broken
-        shell: bash
+      - name: Make gradlew executable
         run: |
-          set -e
-          need=0
-          [ ! -f ./gradlew ] && need=1
-          if [ -f ./gradlew ] && ! head -1 ./gradlew | grep -q '^#!'; then need=1; fi
-          if [ "$need" -eq 1 ]; then
-            curl -s "https://get.sdkman.io" | bash
-            source "$HOME/.sdkman/bin/sdkman-init.sh"
-            sdk install gradle 8.9 >/dev/null
-            gradle wrapper --gradle-version 8.9
-          fi
-          chmod +x ./gradlew
+          set -euxo pipefail
+          test -x ./gradlew || chmod +x ./gradlew
 
-      - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          validate-wrappers: false
-          gradle-home-cache-cleanup: true
-
-      - name: Build Debug APK (robust fallback)
-        shell: bash
+      # ❗ ให้ล้มเหลวจริงถ้า build ไม่ผ่าน (ไม่มี || true อีกต่อไป)
+      - name: Build Debug APK
         run: |
-          set +e
-          ./gradlew --stop || true
-          ./gradlew clean
-          ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug | tee build-log.txt
-          echo "---- FIRST ERROR LINES ----"
-          grep -nE "e: |AAPT: error|Android resource linking failed|Manifest merger failed|^> Task .* FAILED|^Caused by:" build-log.txt | head -n 80 || true
-          exit ${PIPESTATUS[0]}
+          set -euxo pipefail
+          ./gradlew --warning-mode=all --stacktrace clean :app:assembleDebug
 
-      - name: Upload build log (always)
-        if: always()
+      - name: List APK outputs
+        id: list_apk
+        run: |
+          shopt -s globstar nullglob
+          mapfile -t apks < <(printf "%s\n" **/build/outputs/apk/**/*.apk)
+          echo "Found ${#apks[@]} APK(s):"
+          printf '%s\n' "${apks[@]}"
+          printf '%s\n' "${apks[@]}" > apk-list.txt
+
+      - name: Upload APK(s)
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build-log.txt
+          name: app-debug
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14
