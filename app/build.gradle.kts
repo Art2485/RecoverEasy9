@@ -23,36 +23,27 @@ android {
                 "proguard-rules.pro"
             )
         }
-        debug {
-            // เปิดใช้ได้ถ้าต้องการตั้งค่า debug เพิ่มเติม
-        }
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures {
-        viewBinding = true
-    }
+    buildFeatures { viewBinding = true }
 }
 
 dependencies {
-    // พื้นฐาน Android
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
 
-    // ใช้ใน FileAdapter.kt
+    // ที่ใช้ใน FileAdapter.kt และรายการไฟล์
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("io.coil-kt:coil:2.6.0")
-    implementation("io.coil-kt:coil-video:2.6.0") // เผื่อพรีวิววิดีโอ
+    implementation("io.coil-kt:coil-video:2.6.0")
 
-    // (ออปชัน) unit / instrumented test
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
