@@ -14,8 +14,7 @@ jobs:
       GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
@@ -23,57 +22,43 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ----- ติดตั้ง Android cmdline-tools แบบชัวร์ -----
       - name: Install Android SDK tools
         shell: bash
         run: |
           set -e
-          mkdir -p "${ANDROID_HOME}/cmdline-tools"
+          mkdir -p "$ANDROID_HOME"
           curl -sLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q /tmp/cmdline-tools.zip -d "${ANDROID_HOME}/cmdline-tools"
-          rm -rf "${ANDROID_HOME}/cmdline-tools/latest"
-          mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest"
-          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
+          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME"/cmdline-tools
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
       - name: Accept licenses & install SDK packages
         shell: bash
         run: |
           set -e
-          SDKM="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --sdk_root="${ANDROID_HOME}" --licenses >/dev/null || true
-          "$SDKM" --sdk_root="${ANDROID_HOME}" \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKM" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Write local.properties (sdk.dir)
-        shell: bash
-        run: |
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          cat local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      # ----- รีเจน Gradle wrapper อัตโนมัติ ถ้าไฟล์เสีย/หาย -----
       - name: Bootstrap Gradle wrapper if missing/broken
         shell: bash
         run: |
           set -e
           need=0
-          # ไม่มีไฟล์ หรือบรรทัดแรกไม่ใช่ shebang -> ถือว่าเสีย
-          if [ ! -f ./gradlew ]; then need=1; fi
+          [ ! -f ./gradlew ] && need=1
           if [ -f ./gradlew ] && ! head -1 ./gradlew | grep -q '^#!'; then need=1; fi
-          # jar ของ wrapper หายก็ถือว่าเสีย
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then need=1; fi
           if [ "$need" -eq 1 ]; then
-            echo "Regenerating Gradle wrapper..."
             curl -s "https://get.sdkman.io" | bash
             source "$HOME/.sdkman/bin/sdkman-init.sh"
             sdk install gradle 8.9 >/dev/null
-            gradle wrapper --gradle-version 8.9 --distribution-type bin
+            gradle wrapper --gradle-version 8.9
           fi
           chmod +x ./gradlew
 
-      # ปิดการตรวจ wrapper JAR เพื่อกันล้มตอนนี้ (ค่อยเปิดทีหลังได้)
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -81,23 +66,19 @@ jobs:
           gradle-home-cache-cleanup: true
 
       - name: Build Debug APK (robust fallback)
+        shell: bash
         run: |
-          ./gradlew --warning-mode=all --stacktrace --info clean :app:assembleDebug
-
-      - name: Upload APK (if exists)
-        if: ${{ hashFiles('app/build/outputs/apk/debug/app-debug.apk') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          set +e
+          ./gradlew --stop || true
+          ./gradlew clean
+          ./gradlew --warning-mode=all --stacktrace --info :app:assembleDebug | tee build-log.txt
+          echo "---- FIRST ERROR LINES ----"
+          grep -nE "e: |AAPT: error|Android resource linking failed|Manifest merger failed|^> Task .* FAILED|^Caused by:" build-log.txt | head -n 80 || true
+          exit ${PIPESTATUS[0]}
 
       - name: Upload build log (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: |
-            **/build/*.log
-            **/out/**/*
-            **/*.sarif
-          if-no-files-found: ignore
+          path: build-log.txt
