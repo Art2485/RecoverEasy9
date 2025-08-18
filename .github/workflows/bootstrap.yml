@@ -22,11 +22,22 @@ jobs:
       - name: Install Android SDK cmdline-tools
         uses: android-actions/setup-android@v3
 
-      # สเต็ปนี้กัน Broken pipe โดยปล่อยให้ผ่านด้วย || true
+      # ซ่อม gradle-wrapper.jar จาก distribution ทางการของ Gradle
+      - name: Repair Gradle wrapper JAR
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PROP="gradle/wrapper/gradle-wrapper.properties"
+          VER=$(sed -n 's#.*distributionUrl=.*gradle-\(.*\)-bin\.zip#\1#p' "$PROP")
+          echo "Gradle version: $VER"
+          curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
+          unzip -p gradle.zip "gradle-${VER}/lib/gradle-wrapper.jar" > gradle/wrapper/gradle-wrapper.jar
+          rm -f gradle.zip
+          ls -l gradle/wrapper/gradle-wrapper.jar
+
       - name: Accept licenses & install SDK packages (robust)
         shell: bash
         run: |
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --list > /dev/null || true
           yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
@@ -44,15 +55,12 @@ jobs:
 
       - name: List APK outputs
         if: always()
-        run: |
-          echo "APK under app/build/outputs/apk :"
-          find app/build/outputs/apk -type f -name "*.apk" -print || true
+        run: find app/build/outputs/apk -type f -name "*.apk" -print || true
 
       - name: Upload APK(s)
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: app-debug
-          path: |
-            app/build/outputs/apk/**/*.apk
+          path: app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
