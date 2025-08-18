@@ -1,4 +1,4 @@
-name: Android CI — Build installable APK
+name: Android CI — Build APK
 
 on:
   push:
@@ -22,11 +22,13 @@ jobs:
       - name: Install Android SDK cmdline-tools
         uses: android-actions/setup-android@v3
 
-      - name: Accept licenses & install SDK packages
+      # สเต็ปนี้กัน Broken pipe โดยปล่อยให้ผ่านด้วย || true
+      - name: Accept licenses & install SDK packages (robust)
         shell: bash
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --list > /dev/null || true
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Write local.properties (sdk.dir)
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
@@ -34,7 +36,7 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Setup Gradle
+      - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
@@ -42,7 +44,9 @@ jobs:
 
       - name: List APK outputs
         if: always()
-        run: ls -R app/build/outputs/apk || true
+        run: |
+          echo "APK under app/build/outputs/apk :"
+          find app/build/outputs/apk -type f -name "*.apk" -print || true
 
       - name: Upload APK(s)
         uses: actions/upload-artifact@v4
@@ -50,6 +54,5 @@ jobs:
         with:
           name: app-debug
           path: |
-            app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
