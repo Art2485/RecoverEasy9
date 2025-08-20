@@ -1,66 +1,135 @@
-name: Android CI — Build APK
+name: Android CI – Build & Upload APK
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk
+  ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+  JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+  GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) ดึงโค้ด
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2) ติดตั้ง Java 17
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      # 3) ติดตั้ง Android cmdline-tools (วิธีตรง ๆ ไม่พึ่ง action ภายนอก)
       - name: Install Android SDK cmdline-tools
-        uses: android-actions/setup-android@v3
-
-      # ซ่อม gradle-wrapper.jar จาก distribution ทางการของ Gradle
-      - name: Repair Gradle wrapper JAR
         shell: bash
         run: |
-          set -euxo pipefail
-          PROP="gradle/wrapper/gradle-wrapper.properties"
-          VER=$(sed -n 's#.*distributionUrl=.*gradle-\(.*\)-bin\.zip#\1#p' "$PROP")
-          echo "Gradle version: $VER"
-          curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
-          unzip -p gradle.zip "gradle-${VER}/lib/gradle-wrapper.jar" > gradle/wrapper/gradle-wrapper.jar
-          rm -f gradle.zip
-          ls -l gradle/wrapper/gradle-wrapper.jar
+          set -euo pipefail
 
+          mkdir -p "$ANDROID_HOME"
+          cd "$ANDROID_HOME"
+
+          # ดาวน์โหลด commandline-tools (เวอร์ชันล่าสุดที่ใช้ได้กว้าง)
+          curl -sSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+
+          rm -rf cmdline-tools
+          mkdir -p cmdline-tools
+          unzip -q cmdline-tools.zip -d cmdline-tools-temp
+          # โครงสร้างของ zip จะอยู่ในโฟลเดอร์ "cmdline-tools"
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/latest/
+          rm -rf cmdline-tools-temp cmdline-tools.zip
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/emulator" >> $GITHUB_PATH
+
+      # 4) รับ license และติดตั้งแพ็กเกจที่พบบ่อย (รองรับทั้ง android-33/34)
       - name: Accept licenses & install SDK packages (robust)
         shell: bash
         run: |
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          set -euo pipefail
 
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
+
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-34" "build-tools;34.0.0" \
+            "platforms;android-33" "build-tools;33.0.2"
+
+      # 5) เขียน local.properties ให้ Gradle หา SDK เจอ
       - name: Write local.properties (sdk.dir)
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "sdk.dir=$ANDROID_HOME" > ./local.properties
+          cat ./local.properties
 
+      # 6) ซ่อม gradle-wrapper.jar ให้เข้ากับ Gradle 8.8+ (ป้องกัน validation failed)
+      - name: Repair Gradle wrapper JAR (8.8+ compatible)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROP="gradle/wrapper/gradle-wrapper.properties"
+          if [[ ! -f "$PROP" ]]; then
+            echo "Not found: $PROP"
+            exit 1
+          fi
+
+          # ดึงเวอร์ชัน Gradle จาก distributionUrl
+          VER=$(sed -n 's#.*distributionUrl=.*gradle-\([0-9.]\+\)-\(bin\|all\)\.zip#\1#p' "$PROP")
+          echo "Gradle version: $VER"
+
+          # ดาวน์โหลด zip ของ Gradle เวอร์ชันนั้น
+          curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
+
+          # หาไฟล์ wrapper jar ใน zip (รองรับทั้ง lib/ และ lib/plugins/)
+          JAR_PATH=$(unzip -Z1 gradle.zip | grep -E 'gradle-[^/]+/lib/(plugins/)?gradle-wrapper.*\.jar' | head -n1)
+          echo "Wrapper JAR in distribution: $JAR_PATH"
+
+          # แตก wrapper jar ไปไว้ที่โปรเจ็กต์
+          mkdir -p gradle/wrapper
+          unzip -p gradle.zip "$JAR_PATH" > gradle/wrapper/gradle-wrapper.jar
+
+          rm -f gradle.zip
+          ls -l gradle/wrapper/gradle-wrapper.jar
+
+      # 7) อนุญาตให้ gradlew รันได้
       - name: Make gradlew executable
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
 
-      - name: Setup Gradle cache
-        uses: gradle/actions/setup-gradle@v4
+      # 8) สร้าง APK (มี fallback)
+      - name: Build Debug APK (robust)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --stacktrace --warning-mode=all :app:assembleDebug || \
+          ./gradlew --stacktrace --warning-mode=all assembleDebug
 
-      - name: Build Debug APK
-        run: ./gradlew --no-daemon --stacktrace --warning-mode=all clean :app:assembleDebug
-
+      # 9) แสดงไฟล์ APK ที่สร้างได้
       - name: List APK outputs
-        if: always()
-        run: find app/build/outputs/apk -type f -name "*.apk" -print || true
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "APK files found:"
+          find . -type f -name "*.apk" -print
 
+      # 10) อัปโหลดเป็น artifact ให้กดโหลดจากหน้า Actions ได้
       - name: Upload APK(s)
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: app-debug
-          path: app/build/outputs/apk/**/*.apk
+          name: app-debug-apk
+          path: |
+            **/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/*/debug/*.apk
           if-no-files-found: warn
