@@ -23,29 +23,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # เคลียร์ตัวแปร JVM/Gradle ที่มักทำให้หลอน
+      # 1) เคลียร์ตัวแปร JVM/Gradle ที่อาจยัด args แปลก ๆ
       - name: Neutralize JVM/Gradle opts (safe)
         shell: bash
         run: |
           set -euo pipefail
           for v in JAVA_OPTS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS; do
-            if [[ -n "${!v-}" ]]; then
-              echo "$v=" >> "$GITHUB_ENV"
-            fi
+            echo "$v=" >> "$GITHUB_ENV"
           done
 
-      # ซ่อม gradle.properties (ถ้ามี) – แทนขีด/quote แปลก ๆ
-      - name: Sanitize gradle.properties dashes/quotes
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f gradle.properties ]]; then
-            sed -i 's/–/-/g; s/—/-/g; s/[“”]/"/g; s/[‘’]/'"'"'/g' gradle.properties
-            awk '!seen[$1]++' gradle.properties > gradle.properties.tmp && mv gradle.properties.tmp gradle.properties
-            echo "------ gradle.properties ------"; cat gradle.properties; echo "-------------------------------"
-          fi
-
-      # ติดตั้ง Android cmdline-tools + ตั้ง PATH
+      # 2) ติดตั้ง Android cmdline-tools (+ PATH)
       - name: Install Android SDK cmdline-tools
         shell: bash
         run: |
@@ -54,7 +41,7 @@ jobs:
           cd "$ANDROID_HOME"
           curl -sSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           rm -rf cmdline-tools cmdline-tools-temp
-          mkdir -p cmdline-tools cmdline-tools/latest
+          mkdir -p cmdline-tools/latest
           unzip -q cmdline-tools.zip -d cmdline-tools-temp
           mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/latest/
           rm -rf cmdline-tools-temp cmdline-tools.zip
@@ -69,24 +56,23 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
-            "platform-tools" \
-            "platforms;android-34" "build-tools;34.0.0" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
             "platforms;android-33" "build-tools;33.0.2"
 
       - name: Write local.properties (sdk.dir)
         shell: bash
         run: |
           set -euo pipefail
-          echo "sdk.dir=$ANDROID_HOME" > ./local.properties
-          cat ./local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          cat local.properties
 
-      # ซ่อม gradle-wrapper.jar ให้ตรงกับ distributionUrl
+      # 3) ซ่อม gradle-wrapper.jar ให้ตรงเวอร์ชันจาก properties
       - name: Repair Gradle wrapper JAR (8.8+ compatible)
         shell: bash
         run: |
           set -euo pipefail
           PROP="gradle/wrapper/gradle-wrapper.properties"
-          if [[ ! -f "$PROP" ]]; then echo "Not found: $PROP"; exit 1; fi
+          if [[ ! -f "$PROP" ]]; then echo "::error::Not found $PROP"; exit 1; fi
           VER=$(sed -n 's#.*distributionUrl=.*gradle-\([0-9.]\+\)-\(bin\|all\)\.zip#\1#p' "$PROP")
           echo "Gradle version: $VER"
           curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
@@ -96,23 +82,38 @@ jobs:
           rm -f gradle.zip
           ls -l gradle/wrapper/gradle-wrapper.jar
 
-      # **ตัวแก้ปัญหาหลัก** – ซ่อมสคริปต์ gradlew ให้เป็นขีด/quote ปกติ + LF
-      - name: Sanitize gradlew script (fix “–Xmx…”, CRLF→LF)
+      # 4) sanitize gradle.properties (แทนขีดทุกชนิด, quote โค้ง)
+      - name: Sanitize gradle.properties dashes/quotes
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f gradlew ]]; then echo "gradlew missing"; exit 1; fi
-          # แปลง CRLF → LF
+          if [[ -f gradle.properties ]]; then
+            # แทนขีดทุกแบบด้วย - (ASCII)
+            perl -CSDA -i -pe 's/[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}\x{2212}]/-/g; s/[“”]/"/g; s/[‘’]/'\''/g' gradle.properties
+            # เก็บบรรทัดสุดท้ายของ key ซ้ำ ๆ
+            awk -F= '
+              { k=$1; line=$0; m[k]=line; order[++n]=k }
+              END { for(i=1;i<=n;i++){ k=order[i]; if(!seen[k]++){ print m[k] } }
+            ' gradle.properties > gp.tmp && mv gp.tmp gradle.properties
+            echo "------ gradle.properties ------"; cat gradle.properties; echo "-------------------------------"
+          fi
+
+      # 5) sanitize gradlew + บังคับ DEFAULT_JVM_OPTS=""
+      - name: Sanitize gradlew script (fix dashes, quotes, CRLF→LF, clear DEFAULT_JVM_OPTS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f gradlew ]]; then echo "::error::gradlew missing"; exit 1; fi
           perl -pi -e 's/\r$//' gradlew
-          # แทนขีด/quote แปลก ๆ ที่ชอบทำให้ JVM มองเป็นชื่อคลาส
-          sed -i 's/–/-/g; s/—/-/g; s/[“”]/"/g; s/[‘’]/'"'"'/g' gradlew
+          perl -CSDA -i -pe 's/[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}\x{2212}]/-/g; s/[“”]/"/g; s/[‘’]/'\''/g' gradlew
+          awk 'BEGIN{done=0} { if (!done && $0 ~ /^DEFAULT_JVM_OPTS=/) { print "DEFAULT_JVM_OPTS=\"\""; done=1; next } print }' gradlew > gradlew.new && mv gradlew.new gradlew
           chmod +x gradlew
-          echo "Check DEFAULT_JVM_OPTS:"
-          grep -n 'DEFAULT_JVM_OPTS' gradlew || true
+          echo "Check DEFAULT_JVM_OPTS line:"; grep -n '^DEFAULT_JVM_OPTS=' gradlew || true
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # 6) Build
       - name: Build Debug APK (robust)
         shell: bash
         run: |
