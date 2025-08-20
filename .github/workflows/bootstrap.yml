@@ -1,5 +1,4 @@
 name: Android CI – Build & Upload APK
-
 on:
   push:
 
@@ -14,7 +13,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,19 +23,21 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # ล้างตัวแปร JVM/Gradle ที่อาจมี ‘–Xmx…’ แปลก ๆ
-      - name: Neutralize rogue JVM/Gradle opts
+      # ล้างเฉพาะตัวแปรที่ชื่อถูกกติกา (ห้ามมีจุด) เพื่อตัด –Xmx… แปลก ๆ
+      - name: Neutralize JVM/Gradle opts (safe)
         shell: bash
         run: |
           set -euo pipefail
-          for v in JAVA_OPTS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS ORG_GRADLE_PROJECT_org.gradle.jvmargs; do
+          to_clear=(JAVA_OPTS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS)
+          for v in "${to_clear[@]}"; do
             if [[ -n "${!v-}" ]]; then
-              echo "Removing $v='${!v}'"
-              echo "$v=" >> $GITHUB_ENV
+              echo "Clearing $v"
+              printf '%s=\n' "$v" >> "$GITHUB_ENV"
             fi
           done
+          # ถ้ามีใครเคยสร้าง ORG_GRADLE_PROJECT_org.gradle.jvmargs ไว้ใน UI
+          # เรา *ไม่* เขียนทับ (ชื่อไม่ถูกกติกา) แต่จะคุมผ่าน gradle.properties แทน
 
-      # กันขีด/quote แปลกใน gradle.properties
       - name: Sanitize gradle.properties dashes/quotes
         shell: bash
         run: |
@@ -83,7 +83,7 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > ./local.properties
           cat ./local.properties
 
-      # ซ่อม gradle-wrapper.jar ให้ตรงกับเวอร์ชันใน distributionUrl
+      # ซ่อม gradle-wrapper.jar ให้ตรงกับ distributionUrl
       - name: Repair Gradle wrapper JAR (8.8+ compatible)
         shell: bash
         run: |
