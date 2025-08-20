@@ -9,65 +9,66 @@ permissions:
 env:
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
   ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+  # บังคับ encoding อย่างเดียว หลีกเลี่ยงการยัด -Xmx ผ่าน ENV
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-  GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) ดึงโค้ด
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) ติดตั้ง Java 17
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # 3) ติดตั้ง Android cmdline-tools (วิธีตรง ๆ ไม่พึ่ง action ภายนอก)
+      # กันเหตุ quote/ขีดแปลกใน gradle.properties
+      - name: Sanitize gradle.properties dashes/quotes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f gradle.properties ]]; then
+            # แทน en-dash/em-dash/quote โค้ง ด้วยขีด/quote ปกติ
+            sed -i 's/–/-/g; s/—/-/g; s/[“”]/"/g; s/[‘’]/'"'"'/g' gradle.properties
+            # ถ้ามี org.gradle.jvmargs หลายบรรทัด ให้เหลือบรรทัดล่าสุดบรรทัดเดียว
+            awk '!seen[$1]++' gradle.properties > gradle.properties.tmp && mv gradle.properties.tmp gradle.properties
+            echo "------ gradle.properties ------"
+            cat gradle.properties
+            echo "--------------------------------"
+          fi
+
       - name: Install Android SDK cmdline-tools
         shell: bash
         run: |
           set -euo pipefail
-
           mkdir -p "$ANDROID_HOME"
           cd "$ANDROID_HOME"
-
-          # ดาวน์โหลด commandline-tools (เวอร์ชันล่าสุดที่ใช้ได้กว้าง)
           curl -sSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-
           rm -rf cmdline-tools
           mkdir -p cmdline-tools
           unzip -q cmdline-tools.zip -d cmdline-tools-temp
-          # โครงสร้างของ zip จะอยู่ในโฟลเดอร์ "cmdline-tools"
           mkdir -p cmdline-tools/latest
           mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/latest/
           rm -rf cmdline-tools-temp cmdline-tools.zip
-
-          echo "ANDROID_HOME=$ANDROID_HOME"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_HOME/emulator" >> $GITHUB_PATH
 
-      # 4) รับ license และติดตั้งแพ็กเกจที่พบบ่อย (รองรับทั้ง android-33/34)
       - name: Accept licenses & install SDK packages (robust)
         shell: bash
         run: |
           set -euo pipefail
-
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
-
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-34" "build-tools;34.0.0" \
             "platforms;android-33" "build-tools;33.0.2"
 
-      # 5) เขียน local.properties ให้ Gradle หา SDK เจอ
       - name: Write local.properties (sdk.dir)
         shell: bash
         run: |
@@ -75,40 +76,27 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > ./local.properties
           cat ./local.properties
 
-      # 6) ซ่อม gradle-wrapper.jar ให้เข้ากับ Gradle 8.8+ (ป้องกัน validation failed)
+      # ซ่อม gradle-wrapper.jar ให้ตรงกับเวอร์ชันใน distributionUrl (กัน validation fail)
       - name: Repair Gradle wrapper JAR (8.8+ compatible)
         shell: bash
         run: |
           set -euo pipefail
           PROP="gradle/wrapper/gradle-wrapper.properties"
           if [[ ! -f "$PROP" ]]; then
-            echo "Not found: $PROP"
-            exit 1
+            echo "Not found: $PROP"; exit 1
           fi
-
-          # ดึงเวอร์ชัน Gradle จาก distributionUrl
           VER=$(sed -n 's#.*distributionUrl=.*gradle-\([0-9.]\+\)-\(bin\|all\)\.zip#\1#p' "$PROP")
           echo "Gradle version: $VER"
-
-          # ดาวน์โหลด zip ของ Gradle เวอร์ชันนั้น
           curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
-
-          # หาไฟล์ wrapper jar ใน zip (รองรับทั้ง lib/ และ lib/plugins/)
           JAR_PATH=$(unzip -Z1 gradle.zip | grep -E 'gradle-[^/]+/lib/(plugins/)?gradle-wrapper.*\.jar' | head -n1)
-          echo "Wrapper JAR in distribution: $JAR_PATH"
-
-          # แตก wrapper jar ไปไว้ที่โปรเจ็กต์
           mkdir -p gradle/wrapper
           unzip -p gradle.zip "$JAR_PATH" > gradle/wrapper/gradle-wrapper.jar
-
           rm -f gradle.zip
           ls -l gradle/wrapper/gradle-wrapper.jar
 
-      # 7) อนุญาตให้ gradlew รันได้
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # 8) สร้าง APK (มี fallback)
       - name: Build Debug APK (robust)
         shell: bash
         run: |
@@ -116,15 +104,11 @@ jobs:
           ./gradlew --stacktrace --warning-mode=all :app:assembleDebug || \
           ./gradlew --stacktrace --warning-mode=all assembleDebug
 
-      # 9) แสดงไฟล์ APK ที่สร้างได้
       - name: List APK outputs
         shell: bash
         run: |
-          set -euo pipefail
-          echo "APK files found:"
           find . -type f -name "*.apk" -print
 
-      # 10) อัปโหลดเป็น artifact ให้กดโหลดจากหน้า Actions ได้
       - name: Upload APK(s)
         uses: actions/upload-artifact@v4
         with:
