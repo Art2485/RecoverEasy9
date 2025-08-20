@@ -9,7 +9,6 @@ permissions:
 env:
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
   ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-  # บังคับ encoding อย่างเดียว หลีกเลี่ยงการยัด -Xmx ผ่าน ENV
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
 
 jobs:
@@ -26,19 +25,27 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # กันเหตุ quote/ขีดแปลกใน gradle.properties
+      # ล้างตัวแปร JVM/Gradle ที่อาจมี ‘–Xmx…’ แปลก ๆ
+      - name: Neutralize rogue JVM/Gradle opts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in JAVA_OPTS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS ORG_GRADLE_PROJECT_org.gradle.jvmargs; do
+            if [[ -n "${!v-}" ]]; then
+              echo "Removing $v='${!v}'"
+              echo "$v=" >> $GITHUB_ENV
+            fi
+          done
+
+      # กันขีด/quote แปลกใน gradle.properties
       - name: Sanitize gradle.properties dashes/quotes
         shell: bash
         run: |
           set -euo pipefail
           if [[ -f gradle.properties ]]; then
-            # แทน en-dash/em-dash/quote โค้ง ด้วยขีด/quote ปกติ
             sed -i 's/–/-/g; s/—/-/g; s/[“”]/"/g; s/[‘’]/'"'"'/g' gradle.properties
-            # ถ้ามี org.gradle.jvmargs หลายบรรทัด ให้เหลือบรรทัดล่าสุดบรรทัดเดียว
             awk '!seen[$1]++' gradle.properties > gradle.properties.tmp && mv gradle.properties.tmp gradle.properties
-            echo "------ gradle.properties ------"
-            cat gradle.properties
-            echo "--------------------------------"
+            echo "------ gradle.properties ------"; cat gradle.properties; echo "--------------------------------"
           fi
 
       - name: Install Android SDK cmdline-tools
@@ -76,15 +83,13 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > ./local.properties
           cat ./local.properties
 
-      # ซ่อม gradle-wrapper.jar ให้ตรงกับเวอร์ชันใน distributionUrl (กัน validation fail)
+      # ซ่อม gradle-wrapper.jar ให้ตรงกับเวอร์ชันใน distributionUrl
       - name: Repair Gradle wrapper JAR (8.8+ compatible)
         shell: bash
         run: |
           set -euo pipefail
           PROP="gradle/wrapper/gradle-wrapper.properties"
-          if [[ ! -f "$PROP" ]]; then
-            echo "Not found: $PROP"; exit 1
-          fi
+          if [[ ! -f "$PROP" ]]; then echo "Not found: $PROP"; exit 1; fi
           VER=$(sed -n 's#.*distributionUrl=.*gradle-\([0-9.]\+\)-\(bin\|all\)\.zip#\1#p' "$PROP")
           echo "Gradle version: $VER"
           curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
@@ -106,8 +111,7 @@ jobs:
 
       - name: List APK outputs
         shell: bash
-        run: |
-          find . -type f -name "*.apk" -print
+        run: find . -type f -name "*.apk" -print
 
       - name: Upload APK(s)
         uses: actions/upload-artifact@v4
