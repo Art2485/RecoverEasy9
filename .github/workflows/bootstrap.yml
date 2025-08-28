@@ -23,7 +23,6 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # เคลียร์ตัวแปรที่อาจยัด args แปลก ๆ ให้ JVM/Gradle
       - name: Neutralize JVM/Gradle opts (safe)
         shell: bash
         run: |
@@ -32,7 +31,6 @@ jobs:
             echo "$v=" >> "$GITHUB_ENV"
           done
 
-      # ติดตั้ง Android SDK cmdline-tools
       - name: Install Android SDK cmdline-tools
         shell: bash
         run: |
@@ -65,7 +63,7 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat local.properties
 
-      # ซ่อม gradle-wrapper.jar จาก distribution ที่ระบุใน properties
+      # >>>>>>>>>>>>>>>>> FIX: เลือก jar ที่ถูกตัว (ไม่ใช่ annotations) <<<<<<<<<<<<<<<<<
       - name: Repair Gradle wrapper JAR (8.8+ compatible)
         shell: bash
         run: |
@@ -75,13 +73,21 @@ jobs:
           VER=$(sed -n 's#.*distributionUrl=.*gradle-\([0-9.]\+\)-\(bin\|all\)\.zip#\1#p' "$PROP")
           echo "Gradle version: $VER"
           curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
-          JAR_PATH=$(unzip -Z1 gradle.zip | grep -E 'gradle-[^/]+/lib/(plugins/)?gradle-wrapper.*\.jar' | head -n1)
+          # เลือกเฉพาะ gradle-wrapper*.jar ที่ 'ไม่ใช่' annotations และรองรับทั้ง lib/ และ lib/plugins/
+          JAR_PATH=$(unzip -Z1 gradle.zip | \
+            grep -E '^gradle-[^/]+/lib(/plugins)?/gradle-wrapper(-[0-9.]+)?\.jar$' | \
+            grep -v 'annotations' | head -n1)
+          if [[ -z "$JAR_PATH" ]]; then
+            echo "::error::Could not locate gradle-wrapper jar in distribution"
+            unzip -Z1 gradle.zip | sed -n '1,200p'
+            exit 2
+          fi
+          echo "Wrapper jar inside distribution: $JAR_PATH"
           mkdir -p gradle/wrapper
           unzip -p gradle.zip "$JAR_PATH" > gradle/wrapper/gradle-wrapper.jar
           rm -f gradle.zip
           ls -l gradle/wrapper/gradle-wrapper.jar
 
-      # ทำความสะอาด gradle.properties (ขีด/quote แปลก ๆ)
       - name: Sanitize gradle.properties dashes/quotes
         shell: bash
         run: |
@@ -95,7 +101,6 @@ jobs:
             echo "------ gradle.properties ------"; cat gradle.properties; echo "-------------------------------"
           fi
 
-      # gradlew: แทนขีด/quote, CRLF→LF และหัก DEFAULT_JVM_OPTS
       - name: Sanitize gradlew script (fix dashes, quotes, CRLF→LF, clear DEFAULT_JVM_OPTS)
         shell: bash
         run: |
@@ -110,16 +115,18 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # ยืนยันว่า wrapper.jar ใช้งานได้จริง
       - name: Verify wrapper jar contains GradleWrapperMain
         shell: bash
         run: |
           set -euo pipefail
           test -s gradle/wrapper/gradle-wrapper.jar || (echo "::error::gradle-wrapper.jar missing"; exit 1)
-          jar tf gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class' \
-            || (echo "::error::GradleWrapperMain not found in wrapper jar"; exit 2)
+          if ! jar tf gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class'; then
+            echo "::error::GradleWrapperMain not found in wrapper jar"
+            echo "Jar contents (first 50 lines):"
+            jar tf gradle/wrapper/gradle-wrapper.jar | head -n 50
+            exit 2
+          fi
 
-      # Build: ลอง gradlew ก่อน ถ้าไม่ได้ให้ call wrapper โดยตรง
       - name: Build Debug APK (robust)
         shell: bash
         run: |
