@@ -20,41 +20,31 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ติดตั้ง Android SDK + ยอมรับไลเซนส์ + ติดตั้ง build-tools
-      - name: Install Android SDK cmdline-tools
-        run: |
-          set -euxo pipefail
-          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          mkdir -p "$SDK_ROOT"
-          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdtools.zip
-          unzip -q cmdtools.zip -d "$SDK_ROOT"
-          mv "$SDK_ROOT/cmdline-tools" "$SDK_ROOT/cmdline-tools-tmp"
-          mkdir -p "$SDK_ROOT/cmdline-tools"
-          mv "$SDK_ROOT/cmdline-tools-tmp" "$SDK_ROOT/cmdline-tools/latest"
-          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
-          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      # ติดตั้ง Android SDK และยอมรับไลเซนส์ให้อัตโนมัติ (แก้ปัญหา Broken pipe)
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      # ให้ Gradle มองเห็น SDK
+      - name: Install SDK packages
+        run: |
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
       - name: Write local.properties (sdk.dir)
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      # ดาวน์โหลด Gradle เวอร์ชันเดียวกับที่ประกาศใน gradle-wrapper.properties
+      # ดาวน์โหลด Gradle ให้ตรงกับ gradle-wrapper.properties แล้วเรียก gradle โดยตรง
       - name: Download Gradle (match wrapper.properties)
         id: gradle
         run: |
-          set -euxo pipefail
+          set -eux
           VER=$(grep -Po 'gradle-\K([0-9.]+)(?=-bin\.zip)' gradle/wrapper/gradle-wrapper.properties || echo "8.8")
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           curl -sSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o gradle.zip
           unzip -q gradle.zip
           echo "$PWD/gradle-${VER}/bin" >> "$GITHUB_PATH"
 
-      # สร้าง APK โดยไม่พึ่ง gradle-wrapper.jar
       - name: Build Debug APK
         run: |
-          set -euxo pipefail
-          gradle --version
+          set -eux
           gradle --no-daemon --warning-mode=all --stacktrace clean :app:assembleDebug
 
       - name: List APK outputs
@@ -66,6 +56,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: |
-            app/build/outputs/apk/**/*.apk
+          path: app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
