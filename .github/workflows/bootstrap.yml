@@ -23,7 +23,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 1) เคลียร์ตัวแปร JVM/Gradle ที่อาจยัด args แปลก ๆ
+      # เคลียร์ตัวแปรที่อาจยัด args แปลก ๆ ให้ JVM/Gradle
       - name: Neutralize JVM/Gradle opts (safe)
         shell: bash
         run: |
@@ -32,7 +32,7 @@ jobs:
             echo "$v=" >> "$GITHUB_ENV"
           done
 
-      # 2) ติดตั้ง Android cmdline-tools (+ PATH)
+      # ติดตั้ง Android SDK cmdline-tools
       - name: Install Android SDK cmdline-tools
         shell: bash
         run: |
@@ -47,7 +47,6 @@ jobs:
           rm -rf cmdline-tools-temp cmdline-tools.zip
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/emulator" >> $GITHUB_PATH
 
       - name: Accept licenses & install SDK packages (robust)
         shell: bash
@@ -66,7 +65,7 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat local.properties
 
-      # 3) ซ่อม gradle-wrapper.jar ให้ตรงเวอร์ชันจาก properties
+      # ซ่อม gradle-wrapper.jar จาก distribution ที่ระบุใน properties
       - name: Repair Gradle wrapper JAR (8.8+ compatible)
         shell: bash
         run: |
@@ -82,15 +81,13 @@ jobs:
           rm -f gradle.zip
           ls -l gradle/wrapper/gradle-wrapper.jar
 
-      # 4) sanitize gradle.properties (แทนขีดทุกชนิด, quote โค้ง)
+      # ทำความสะอาด gradle.properties (ขีด/quote แปลก ๆ)
       - name: Sanitize gradle.properties dashes/quotes
         shell: bash
         run: |
           set -euo pipefail
           if [[ -f gradle.properties ]]; then
-            # แทนขีดทุกแบบด้วย - (ASCII)
             perl -CSDA -i -pe 's/[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}\x{2212}]/-/g; s/[“”]/"/g; s/[‘’]/'\''/g' gradle.properties
-            # เก็บบรรทัดสุดท้ายของ key ซ้ำ ๆ
             awk -F= '
               { k=$1; line=$0; m[k]=line; order[++n]=k }
               END { for(i=1;i<=n;i++){ k=order[i]; if(!seen[k]++){ print m[k] } }
@@ -98,7 +95,7 @@ jobs:
             echo "------ gradle.properties ------"; cat gradle.properties; echo "-------------------------------"
           fi
 
-      # 5) sanitize gradlew + บังคับ DEFAULT_JVM_OPTS=""
+      # gradlew: แทนขีด/quote, CRLF→LF และหัก DEFAULT_JVM_OPTS
       - name: Sanitize gradlew script (fix dashes, quotes, CRLF→LF, clear DEFAULT_JVM_OPTS)
         shell: bash
         run: |
@@ -108,18 +105,37 @@ jobs:
           perl -CSDA -i -pe 's/[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}\x{2212}]/-/g; s/[“”]/"/g; s/[‘’]/'\''/g' gradlew
           awk 'BEGIN{done=0} { if (!done && $0 ~ /^DEFAULT_JVM_OPTS=/) { print "DEFAULT_JVM_OPTS=\"\""; done=1; next } print }' gradlew > gradlew.new && mv gradlew.new gradlew
           chmod +x gradlew
-          echo "Check DEFAULT_JVM_OPTS line:"; grep -n '^DEFAULT_JVM_OPTS=' gradlew || true
+          grep -n '^DEFAULT_JVM_OPTS=' gradlew || true
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # 6) Build
+      # ยืนยันว่า wrapper.jar ใช้งานได้จริง
+      - name: Verify wrapper jar contains GradleWrapperMain
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s gradle/wrapper/gradle-wrapper.jar || (echo "::error::gradle-wrapper.jar missing"; exit 1)
+          jar tf gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class' \
+            || (echo "::error::GradleWrapperMain not found in wrapper jar"; exit 2)
+
+      # Build: ลอง gradlew ก่อน ถ้าไม่ได้ให้ call wrapper โดยตรง
       - name: Build Debug APK (robust)
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --stacktrace --warning-mode=all :app:assembleDebug || \
-          ./gradlew --stacktrace --warning-mode=all assembleDebug
+          set +e
+          ./gradlew --stacktrace --warning-mode=all :app:assembleDebug
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "gradlew failed ($rc). Trying direct wrapper main…"
+            java -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew \
+                 -classpath gradle/wrapper/gradle-wrapper.jar \
+                 org.gradle.wrapper.GradleWrapperMain \
+                 --stacktrace --warning-mode=all :app:assembleDebug
+            rc=$?
+          fi
+          exit $rc
 
       - name: List APK outputs
         shell: bash
