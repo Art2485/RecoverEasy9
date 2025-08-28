@@ -1,18 +1,15 @@
-name: Android CI – Build & Upload APK
+name: Android CI — Build & Upload APK
+
 on:
   push:
-
-permissions:
-  contents: read
-
-env:
-  ANDROID_HOME: ${{ github.workspace }}/android-sdk
-  ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-  JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,138 +18,54 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      - name: Neutralize JVM/Gradle opts (safe)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for v in JAVA_OPTS JDK_JAVA_OPTIONS _JAVA_OPTIONS GRADLE_OPTS; do
-            echo "$v=" >> "$GITHUB_ENV"
-          done
-
+      # ติดตั้ง Android SDK + ยอมรับไลเซนส์ + ติดตั้ง build-tools
       - name: Install Android SDK cmdline-tools
-        shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p "$ANDROID_HOME"
-          cd "$ANDROID_HOME"
-          curl -sSLo cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
-          rm -rf cmdline-tools cmdline-tools-temp
-          mkdir -p cmdline-tools/latest
-          unzip -q cmdline-tools.zip -d cmdline-tools-temp
-          mv cmdline-tools-temp/cmdline-tools/* cmdline-tools/latest/
-          rm -rf cmdline-tools-temp cmdline-tools.zip
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          set -euxo pipefail
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          mkdir -p "$SDK_ROOT"
+          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdtools.zip
+          unzip -q cmdtools.zip -d "$SDK_ROOT"
+          mv "$SDK_ROOT/cmdline-tools" "$SDK_ROOT/cmdline-tools-tmp"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools-tmp" "$SDK_ROOT/cmdline-tools/latest"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Accept licenses & install SDK packages (robust)
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
-            "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
-            "platforms;android-33" "build-tools;33.0.2"
-
+      # ให้ Gradle มองเห็น SDK
       - name: Write local.properties (sdk.dir)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          cat local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      # >>>>>>>>>>>>>>>>> FIX: เลือก jar ที่ถูกตัว (ไม่ใช่ annotations) <<<<<<<<<<<<<<<<<
-      - name: Repair Gradle wrapper JAR (8.8+ compatible)
-        shell: bash
+      # ดาวน์โหลด Gradle เวอร์ชันเดียวกับที่ประกาศใน gradle-wrapper.properties
+      - name: Download Gradle (match wrapper.properties)
+        id: gradle
         run: |
-          set -euo pipefail
-          PROP="gradle/wrapper/gradle-wrapper.properties"
-          if [[ ! -f "$PROP" ]]; then echo "::error::Not found $PROP"; exit 1; fi
-          VER=$(sed -n 's#.*distributionUrl=.*gradle-\([0-9.]\+\)-\(bin\|all\)\.zip#\1#p' "$PROP")
-          echo "Gradle version: $VER"
-          curl -sLo gradle.zip "https://services.gradle.org/distributions/gradle-${VER}-bin.zip"
-          # เลือกเฉพาะ gradle-wrapper*.jar ที่ 'ไม่ใช่' annotations และรองรับทั้ง lib/ และ lib/plugins/
-          JAR_PATH=$(unzip -Z1 gradle.zip | \
-            grep -E '^gradle-[^/]+/lib(/plugins)?/gradle-wrapper(-[0-9.]+)?\.jar$' | \
-            grep -v 'annotations' | head -n1)
-          if [[ -z "$JAR_PATH" ]]; then
-            echo "::error::Could not locate gradle-wrapper jar in distribution"
-            unzip -Z1 gradle.zip | sed -n '1,200p'
-            exit 2
-          fi
-          echo "Wrapper jar inside distribution: $JAR_PATH"
-          mkdir -p gradle/wrapper
-          unzip -p gradle.zip "$JAR_PATH" > gradle/wrapper/gradle-wrapper.jar
-          rm -f gradle.zip
-          ls -l gradle/wrapper/gradle-wrapper.jar
+          set -euxo pipefail
+          VER=$(grep -Po 'gradle-\K([0-9.]+)(?=-bin\.zip)' gradle/wrapper/gradle-wrapper.properties || echo "8.8")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          curl -sSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o gradle.zip
+          unzip -q gradle.zip
+          echo "$PWD/gradle-${VER}/bin" >> "$GITHUB_PATH"
 
-      - name: Sanitize gradle.properties dashes/quotes
-        shell: bash
+      # สร้าง APK โดยไม่พึ่ง gradle-wrapper.jar
+      - name: Build Debug APK
         run: |
-          set -euo pipefail
-          if [[ -f gradle.properties ]]; then
-            perl -CSDA -i -pe 's/[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}\x{2212}]/-/g; s/[“”]/"/g; s/[‘’]/'\''/g' gradle.properties
-            awk -F= '
-              { k=$1; line=$0; m[k]=line; order[++n]=k }
-              END { for(i=1;i<=n;i++){ k=order[i]; if(!seen[k]++){ print m[k] } }
-            ' gradle.properties > gp.tmp && mv gp.tmp gradle.properties
-            echo "------ gradle.properties ------"; cat gradle.properties; echo "-------------------------------"
-          fi
-
-      - name: Sanitize gradlew script (fix dashes, quotes, CRLF→LF, clear DEFAULT_JVM_OPTS)
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -f gradlew ]]; then echo "::error::gradlew missing"; exit 1; fi
-          perl -pi -e 's/\r$//' gradlew
-          perl -CSDA -i -pe 's/[\x{2010}\x{2011}\x{2012}\x{2013}\x{2014}\x{2015}\x{2212}]/-/g; s/[“”]/"/g; s/[‘’]/'\''/g' gradlew
-          awk 'BEGIN{done=0} { if (!done && $0 ~ /^DEFAULT_JVM_OPTS=/) { print "DEFAULT_JVM_OPTS=\"\""; done=1; next } print }' gradlew > gradlew.new && mv gradlew.new gradlew
-          chmod +x gradlew
-          grep -n '^DEFAULT_JVM_OPTS=' gradlew || true
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Verify wrapper jar contains GradleWrapperMain
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s gradle/wrapper/gradle-wrapper.jar || (echo "::error::gradle-wrapper.jar missing"; exit 1)
-          if ! jar tf gradle/wrapper/gradle-wrapper.jar | grep -q 'org/gradle/wrapper/GradleWrapperMain.class'; then
-            echo "::error::GradleWrapperMain not found in wrapper jar"
-            echo "Jar contents (first 50 lines):"
-            jar tf gradle/wrapper/gradle-wrapper.jar | head -n 50
-            exit 2
-          fi
-
-      - name: Build Debug APK (robust)
-        shell: bash
-        run: |
-          set -euo pipefail
-          set +e
-          ./gradlew --stacktrace --warning-mode=all :app:assembleDebug
-          rc=$?
-          if [ $rc -ne 0 ]; then
-            echo "gradlew failed ($rc). Trying direct wrapper main…"
-            java -Dfile.encoding=UTF-8 -Dorg.gradle.appname=gradlew \
-                 -classpath gradle/wrapper/gradle-wrapper.jar \
-                 org.gradle.wrapper.GradleWrapperMain \
-                 --stacktrace --warning-mode=all :app:assembleDebug
-            rc=$?
-          fi
-          exit $rc
+          set -euxo pipefail
+          gradle --version
+          gradle --no-daemon --warning-mode=all --stacktrace clean :app:assembleDebug
 
       - name: List APK outputs
-        shell: bash
-        run: find . -type f -name "*.apk" -print
+        if: always()
+        run: find app/build/outputs -type f -name "*.apk" -print || true
 
       - name: Upload APK(s)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: app-debug
           path: |
-            **/build/outputs/apk/debug/*.apk
-            **/build/outputs/apk/*/debug/*.apk
+            app/build/outputs/apk/**/*.apk
           if-no-files-found: warn
