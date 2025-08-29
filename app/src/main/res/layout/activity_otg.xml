@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/txtStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="สถานะ"
+        android:textSize="15sp"
+        android:padding="6dp" />
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:weightSum="4"
+        android:paddingTop="4dp"
+        android:paddingBottom="6dp">
+
+        <Button
+            android:id="@+id/btnGrant"
+            android:text="ให้สิทธิ์ OTG"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/btnScan"
+            android:text="สแกน"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/btnToggle"
+            android:text="เลือกทั้งหมด"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/btnCopy"
+            android:text="ก๊อปแบบปลอดภัย"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"/>
+    </LinearLayout>
+
+    <CheckBox
+        android:id="@+id/chkDeep"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="สแกนละเอียด (Deep)"
+        android:checked="true"/>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:visibility="gone"
+        android:indeterminate="true"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"/>
+</LinearLayout>
