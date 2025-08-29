@@ -2,22 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.recovereasy">
 
+    <!-- รองรับ USB Host (OTG). ไม่บังคับเครื่องต้องมี -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <!-- ใช้ SAF เป็นหลัก ไม่ต้องขอ READ_EXTERNAL_STORAGE -->
     <application
         android:allowBackup="true"
-        android:label="RecoverEasy9"
+        android:label="RecoverEasy (OTG)"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
+
         <activity
-            android:name=".MainActivity"
+            android:name=".OtgActivity"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-    </application>
 
-    <!-- สำหรับอุปกรณ์/การ์ด OTG ใช้ SAF อยู่แล้ว ไม่ต้องขอสิทธิ์เพิ่ม -->
+    </application>
 </manifest>
